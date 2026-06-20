@@ -57,7 +57,8 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     else:
         with st.spinner("Analisando o projeto e calculando materiais..."):
             try:
-                model = genai.GenerativeModel('gemini-pro')
+                # MODELO ATUALIZADO PARA O MAIS RECENTE
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 
                 prompt = f"""
                 Você é um orçamentista especialista em serralheria e estruturas metálicas.
