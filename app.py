@@ -1,175 +1,164 @@
 import streamlit as st
-from datetime import datetime
+import google.generativeai as genai
+import json
+import pandas as pd
 
-# Configuração da página para rodar perfeitamente em Celular e Notebook
-st.set_page_config(page_title="Serralharia Pro", page_icon="🛠️", layout="centered")
+# CONFIGURAÇÃO DA PÁGINA
+st.set_page_config(page_title="Sistema de Orçamentos Pro - JPL Trailers", layout="wide", page_icon="🛠️")
 
-# Ocultar menus padrões do Streamlit para o PDF ficar limpo na impressão
-esconder_elementos = """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stAppDeployButton {display:none !important;}
-    </style>
-"""
-st.markdown(esconder_elementos, unsafe_allow_html=True)
+# CONFIGURAÇÃO DA CHAVE DA IA (GEMINI)
+# Dica: Guarde sua API Key nos Secrets do Streamlit com o nome "GEMINI_API_KEY"
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    # Caso não configurado nos secrets, tenta pegar de um campo ou deixa aviso
+    pass
 
-# --- BANCO DE DADOS DE PREÇOS DE REFERÊNCIA POR M² ---
-# Você pode alterar esses valores de custo e horas direto aqui no código depois
-PRECOS_M2_REFERENCIA = {
-    "Cobertura (Estrutura + Telha Simples)": {"material": 140.0, "horas": 0.6},
-    "Cobertura (Estrutura + Telha Sanduíche)": {"material": 240.0, "horas": 0.8},
-    "Portão Basculante (Fechado/Chapa)": {"material": 260.0, "horas": 1.5},
-    "Portão Deslizante Gradeado": {"material": 160.0, "horas": 1.0},
-    "Estrutura Metálica p/ Galpão": {"material": 310.0, "horas": 1.2},
-    "Corrimão / Guarda-Corpo (Metro Linear)": {"material": 90.0, "horas": 0.8}
-}
+# ---- PAINEL LATERAL: DADOS DA EMPRESA E PARÂMETROS ----
+st.sidebar.header("🏢 Dados da Empresa (Cabeçalho)")
+nome_empresa = st.sidebar.text_input("Nome da Empresa", "JPL Trailers")
+cnpj_cpf = st.sidebar.text_input("CNPJ / CPF", "00.000.000/0001-00")
+responsavel = st.sidebar.text_input("Nome do Responsável", "Jonatã Carvalho")
+telefone = st.sidebar.text_input("Telefone / WhatsApp", "(71) 99999-9999")
+endereco = st.sidebar.text_input("Endereço", "Salvador, Bahia")
+rede_social_url = st.sidebar.text_input("Link da Rede Social (TikTok/Instagram)", "https://www.tiktok.com/")
 
-# --- SISTEMA DE LOGIN ---
-if "autenticado" not in st.session_state:
-    st.session_state["autenticado"] = False
+st.sidebar.markdown("---")
+st.sidebar.header("💰 Parâmetros Financeiros")
+valor_diaria_total = st.sidebar.number_input("Custo Total da Diária (R$)", value=350.00, step=10.0)
+margem_lucro = st.sidebar.slider("Margem de Lucro (%)", min_value=10, max_value=100, value=40, step=5)
 
-if not st.session_state["autenticado"]:
-    st.title("🔐 Sistema de Orçamentos Serralheria")
-    usuario = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
-    if st.button("Entrar no Sistema"):
-        if usuario == "admin" and senha == "serralheiro123":
-            st.session_state["autenticado"] = True
-            st.rerun()
-        else:
-            st.error("Usuário ou senha incorretos.")
-    st.stop()
+# TÍTULO PRINCIPAL
+st.title("🛠️ Sistema de Orçamentos Inteligente")
+st.write("Cole a conversa do WhatsApp ou a descrição do cliente. A IA vai ler, quantificar os materiais e você confere tudo antes de gerar o preço.")
 
-# --- ESTADO DO MODO DE IMPRESSÃO ---
-if "modo_impressao" not in st.session_state:
-    st.session_state["modo_impressao"] = False
+st.markdown("---")
 
-# --- SE NÃO ESTIVER NO MODO IMPRESSÃO: MOSTRA O PAINEL DE CÁLCULO ---
-if not st.session_state["modo_impressao"]:
-    st.title("🛠️ Serralheria Pro")
-    st.write("Gere orçamentos rápidos, precisos e profissionais.")
-    
-    aba = st.radio("Selecione o Modo de Orçamento:", ["Por Metro Quadrado (m²)", "Por Itens Detalhados"], horizontal=True)
+# ---- ETAPA 1: ENTRADA DA IA ----
+st.subheader("Etapa 1: Resumo do Pedido (Conversa do WhatsApp)")
+texto_cliente = st.text_area(
+    "Cole aqui o texto enviado pelo cliente ou os detalhes que você discutiu:",
+    placeholder="Exemplo: Portão basculante de 3x2 metros na chapa 18 com social embutido, pintura automotiva e instalação no Imbuí.",
+    height=150
+)
 
-    # Painel Lateral de Custos Fixos
-    st.sidebar.header("⚙️ Custos Fixos da Oficina")
-    VALOR_HORA = st.sidebar.number_input("Valor da sua Hora (R$)", value=50.0, step=5.0)
-    TAXA_CONSUMIVEIS = st.sidebar.slider("Taxa de Consumíveis (Discos/Solda) %", 0, 15, 5)
-
-    st.subheader("📋 Dados do Cliente e Serviço")
-    nome_cliente = st.text_input("Nome do Cliente", value="Cliente Padrão")
-    tipo_servico = st.selectbox("Tipo de Serviço", ["Cobertura", "Estrutura Metálica", "Portão", "Grades/Esquadrias", "Outros"])
-    descricao_detalhada = st.text_area("Descrição detalhada do que será feito", placeholder="Ex: Fabricação de portão basculante em chapa 18 com social embutido...")
-
-    custo_material_total = 0.0
-    horas_estimadas_total = 0.0
-    detalhe_modelo = ""
-
-    if aba == "Por Metro Quadrado (m²)":
-        st.subheader("📐 Cálculo por Área")
-        modelo = st.selectbox("Selecione o Modelo Padrão:", list(PRECOS_M2_REFERENCIA.keys()))
-        detalhe_modelo = modelo
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            largura = st.number_input("Largura / Frente (metros)", value=1.0, min_value=0.1, step=0.5)
-        with col2:
-            comprimento = st.number_input("Comprimento / Altura (metros)", value=1.0, min_value=0.1, step=0.5)
-        
-        area = largura * comprimento
-        st.info(f"📐 Área Total: **{area:.2f} m²**")
-        
-        custo_material_total = area * PRECOS_M2_REFERENCIA[modelo]["material"]
-        horas_estimadas_total = area * PRECOS_M2_REFERENCIA[modelo]["horas"]
-    else:
-        st.subheader("🔩 Cálculo Detalhado (Peça por Peça)")
-        custo_material_total = st.number_input("Custo Bruto Total dos Materiais (R$)", value=0.0, step=50.0)
-        horas_estimadas_total = st.number_input("Horas Estimadas de Trabalho (Total)", value=0.0, step=1.0)
-
-    st.subheader("🚚 Custos Extras e Margem")
-    col3, col4 = st.columns(2)
-    with col3:
-        deslocamento = st.number_input("Frete / Deslocamento (R$)", value=0.0, step=10.0)
-    with col4:
-        equipamentos = st.number_input("Equipamentos Extras (R$)", value=0.0, step=10.0)
-
-    margem_lucro = st.slider("Margem de Lucro Desejada (%)", 10, 150, 40)
-
-    # --- PROCESSAMENTO DOS CÁLCULOS ---
-    consumiveis_calculado = custo_material_total * (TAXA_CONSUMIVEIS / 100)
-    custo_material_final = custo_material_total + consumiveis_calculado
-    mao_de_obra_calculada = horas_estimadas_total * VALOR_HORA
-    custo_total_producao = custo_material_final + mao_de_obra_calculada + deslocamento + equipamentos
-    
-    fator_margem = 1 + (margem_lucro / 100)
-    preco_final_cliente = custo_total_producao * fator_margem
-
-    # --- SALVAR NA SESSÃO PARA GERAR O PDF ---
-    st.session_state["dados_orcamento"] = {
-        "cliente": nome_cliente,
-        "servico": tipo_servico,
-        "descricao": descricao_detalhada,
-        "modelo": detalhe_modelo,
-        "total": preco_final_cliente,
-        "data": datetime.now().strftime("%d/%m/%Y")
+# Inicializando estados no sistema para guardar o que a IA processar
+if "dados_orcamento" not in st.session_state:
+    st.session_state.dados_orcamento = {
+        "prazo_dias": 5,
+        "materiais": [
+            {"Item": "Ferro / Metalon", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0},
+            {"Item": "Consumíveis (Solda/Disco)", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0},
+            {"Item": "Tinta / Primer", "Quantidade": 1.0, "Unidade": "lata", "Preco_Unitario": 80.0}
+        ]
     }
 
-    # Painel de Resumo Oculto para o Serralheiro
-    st.markdown("---")
-    st.subheader("💰 Resumo Interno (Só você enxerga)")
-    col_res1, col_res2 = st.columns(2)
-    with col_res1:
-        st.write(f"**Materiais + Consumíveis:** R$ {custo_material_final:.2f}")
-        st.write(f"**Mão de Obra ({horas_estimadas_total:.1f}h):** R$ {mao_de_obra_calculada:.2f}")
-        st.write(f"**Logística e Extras:** R$ {(deslocamento + equipamentos):.2f}")
-        st.write(f"📉 **Custo Real de Produção:** R$ {custo_total_producao:.2f}")
-        st.write(f"💵 **Seu Lucro Líquido:** R$ {(preco_final_cliente - custo_total_producao):.2f}")
-    with col_res2:
-        st.success(f"### Preço para o Cliente:\n## R$ {preco_final_cliente:.2f}")
-
-    # Botões de Ação
-    st.markdown("---")
-    if st.button("📄 Gerar Visualização em PDF para o Cliente"):
-        st.session_state["modo_impressao"] = True
-        st.rerun()
-
-# --- MODO DE IMPRESSÃO: MONTA A FOLHA LIMPA DO ORÇAMENTO ---
-else:
-    dados = st.session_state["dados_orcamento"]
-    
-    # Layout da Folha de Orçamento
-    st.markdown("### 🛠️ J&L METALURGICA E SERRALHERIA")
-    st.write("Salvador - BA | Contato via WhatsApp")
-    st.markdown("---")
-    
-    st.subheader("📄 ORÇAMENTO DE SERVIÇO")
-    st.write(f"**Data de Emissão:** {dados['data']}")
-    st.write(f"**Validade da Proposta:** 10 dias")
-    st.write(f"**Cliente:** {dados['cliente']}")
-    st.write(f"**Tipo de Projeto:** {dados['servico']} {f'({dados['modelo']})' if dados['modelo'] else ''}")
-    
-    st.markdown("**Descrição dos Serviços:**")
-    if dados['descricao']:
-        st.info(dados['descricao'])
+if st.button("🚀 Processar Texto com Inteligência Artificial"):
+    if not texto_cliente:
+        st.warning("Por favor, digite ou cole algum texto antes de processar.")
+    elif "GEMINI_API_KEY" not in st.secrets:
+        st.info("🤖 Modo de Simulação Ativado (Adicione a GEMINI_API_KEY nos Secrets do Streamlit para ativar a IA real).")
     else:
-        st.write("Fabricação e instalação conforme especificações combinadas com o cliente.")
-        
-    st.markdown("---")
-    st.markdown(f"## VALOR TOTAL DO INVESTIMENTO:\n# R$ {dados['total']:.2f}")
-    st.markdown("---")
-    
-    st.caption("⚙️ **Termos e Condições:**\n"
-               "- Incluso materiais descritos, fabricação, solda, acabamento e instalação padrão.\n"
-               "- Qualquer alteração no projeto original após aprovação alterará o valor final.\n"
-               "- Forma de pagamento a combinar.")
+        with st.spinner("Analisando o projeto e calculando materiais..."):
+            try:
+                model = genai.GenerativeModel('gemini-pro')
+                
+                # Prompt instruindo a IA a agir como um Orçamentista de Metalurgia experiente
+                prompt = f"""
+                Você é um orçamentista especialista em serralheria e estruturas metálicas.
+                Analise o seguinte pedido de serviço e extraia uma estimativa realista de materiais necessários e dias de trabalho necessários para fabricação.
+                
+                Pedido: "{texto_cliente}"
+                
+                Responda ESTRITAMENTE no formato JSON abaixo, sem textos adicionais, notas ou marcações em markdown. O preço unitário deve ser uma estimativa média de mercado se não informada.
+                
+                {{
+                  "prazo_dias": 5,
+                  "materiais": [
+                    {{"Item": "Nome do Material", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0}}
+                  ]
+                }}
+                """
+                
+                response = model.generate_content(prompt)
+                texto_resposta = response.text.strip()
+                
+                # Limpando possíveis blocos de código que a IA coloque
+                if texto_resposta.startswith("```json"):
+                    texto_resposta = texto_resposta.replace("```json", "").replace("```", "")
+                
+                dados_limpos = json.loads(texto_resposta)
+                st.session_state.dados_orcamento = dados_limpos
+                st.success("Texto interpretado com sucesso! Confira e ajuste os dados abaixo.")
+            except Exception as e:
+                st.error(f"Erro ao processar com a IA. Usando base padrão para edição. Detalhe: {e}")
 
-    # Botões para voltar ou acionar comando de impressão
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("⬅️ Voltar e Editar"):
-            st.session_state["modo_impressao"] = False
-            st.rerun()
-    with col_btn2:
-        st.write("💡 *Para salvar em PDF, clique nos 3 pontinhos do seu navegador (Chrome/Safari), vá em 'Compartilhar' ou 'Imprimir' e escolha 'Salvar como PDF'.*")
+st.markdown("---")
+
+# ---- ETAPA 2: ÁREA DE CONFERÊNCIA (EDITÁVEL) ----
+st.subheader("Etapa 2: Conferência e Ajustes")
+st.write("Altere qualquer valor abaixo se achar necessário. A IA sugere, mas quem dá a palavra final é você.")
+
+# Campo para alterar o prazo sugerido pela IA
+prazo_final = st.number_input("Prazo de Entrega Estimado (Dias)", value=int(st.session_state.dados_orcamento.get("prazo_dias", 5)), min_value=1)
+
+# Transformando a sugestão de materiais em um DataFrame para exibição editável
+df_materiais_original = pd.DataFrame(st.session_state.dados_orcamento.get("materiais"))
+
+st.write("**Lista de Materiais Necessários (Dê um duplo clique na célula para alterar quantidade ou preço):**")
+# Componente moderno do Streamlit que permite editar a tabela direto na tela
+df_editado = st.data_editor(df_materiais_original, num_rows="dynamic", use_container_width=True)
+
+st.markdown("---")
+
+# ---- ETAPA 3: CÁLCULOS E EXIBIÇÃO DE RESULTADOS ----
+st.subheader("Etapa 3: Orçamento Final")
+
+# Cálculos Matemáticos Baseados nas Alterações do Usuário
+df_editado["Total_Item"] = df_editado["Quantidade"] * df_editado["Preco_Unitario"]
+custo_materiais_total = df_editado["Total_Item"].sum()
+custo_mao_de_obra_total = prazo_final * valor_diaria_total
+
+custo_total_producao = custo_materiais_total + custo_mao_de_obra_total
+preco_final_cliente = custo_total_producao * (1 + (margem_lucro / 100))
+lucro_liquido_empresa = preco_final_cliente - custo_total_producao
+
+# Criação das Abas Separadas de Visualização
+tab_cliente, tab_interna = st.tabs(["👤 VISÃO DO CLIENTE (O que enviar)", "🛠️ VISÃO DA EMPRESA (O que só você vê)"])
+
+with tab_cliente:
+    st.markdown(f"### 📄 ORÇAMENTO DE SERVIÇO")
+    
+    # Cabeçalho Comercial com os dados informados no painel lateral
+    st.info(f"""
+    **{nome_empresa}** *Responsável:* {responsavel} | *CNPJ/CPF:* {cnpj_cpf}  
+    *Contato / WhatsApp:* {telefone} | *Local:* {endereco}  
+    🌐 [Siga nossa Rede Social no TikTok / Instagram]({rede_social_url})
+    """)
+    
+    st.write(f"**Descrição do Escopo:** {texto_cliente if texto_cliente else 'Projeto sob medida em serralheria.'}")
+    st.write(f"**Prazo de Entrega:** {prazo_final} dias úteis após aprovação.")
+    
+    st.markdown("---")
+    st.markdown(f"## 💰 Valor Total do Investimento: **R$ {preco_final_cliente:,.2f}**")
+    st.write("*Condições de pagamento: A combinar com o responsável técnico.*")
+    
+    st.caption("Para salvar ou enviar para o cliente, você pode tirar um print desta seção ou usar o comando do seu navegador para Imprimir em PDF.")
+
+with tab_interna:
+    st.markdown("### 📊 Painel de Custos Internos e Lucro")
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Gastos com Material", f"R$ {custo_materials_total:,.2f}")
+    col2.metric("Pagamento de Diárias", f"R$ {custo_mao_de_obra_total:,.2f}")
+    col3.metric("Lucro Líquido Limpo", f"R$ {lucro_liquido_empresa:,.2f}", delta=f"{margem_lucro}% Margem")
+    
+    st.write("---")
+    st.write("📋 **Lista de Compras Pronta para Enviar ao Fornecedor:**")
+    
+    # Gera uma lista de texto limpa para o Jonatã copiar e colar no WhatsApp do fornecedor
+    texto_copiar = ""
+    for _, linha in df_editado.iterrows():
+        texto_copiar += f"- {linha['Quantidade']} {linha['Unidade']} de {linha['Item']}\n"
+        
+    st.text_area("Copie a lista abaixo e mande direto para a distribuidora de ferro:", value=texto_copiar, height=120)
