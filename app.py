@@ -45,7 +45,7 @@ if "dados_orcamento" not in st.session_state:
         "materiais": [
             {"Item": "Ferro / Metalon", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0},
             {"Item": "Consumíveis (Solda/Disco)", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0},
-            {"Item": "Tinta / Primer", "Quantidade": 1.0, "Unidade": "lata", "Preco_Unitario": 80.0}
+            {"Item": "Tinta / Primer", "Quantidade": 1.0, "Lata": "lata", "Preco_Unitario": 80.0}
         ]
     }
 
@@ -57,8 +57,10 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     else:
         with st.spinner("Analisando o projeto e calculando materiais..."):
             try:
-                # MODELO ATUALIZADO PARA O MAIS RECENTE
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # MODELO ATUALIZADO E FORÇANDO VERSÃO DA API DE FORMA CORRETA
+                model = genai.GenerativeModel(
+                    model_name='gemini-2.5-flash'
+                )
                 
                 prompt = f"""
                 Você é um orçamentista especialista em serralheria e estruturas metálicas.
@@ -76,7 +78,8 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 }}
                 """
                 
-                response = model.generate_content(prompt)
+                # Forçando a requisição a usar a API v1 estável
+                response = model.generate_content(prompt, request_options={"api_version": "v1"})
                 texto_resposta = response.text.strip()
                 
                 if texto_resposta.startswith("```json"):
@@ -147,6 +150,8 @@ with tab_interna:
     
     texto_copiar = ""
     for _, linha in df_editado.iterrows():
-        texto_copiar += f"- {linha['Quantidade']} {linha['Unidade']} de {linha['Item']}\n"
+        # Verificando se a coluna se chama 'Unidade' ou 'Lata' para evitar erros
+        unidade_txt = linha['Unidade'] if 'Unidade' in df_editado.columns else (linha['Lata'] if 'Lata' in df_editado.columns else 'unid')
+        texto_copiar += f"- {linha['Quantidade']} {unidade_txt} de {linha['Item']}\n"
         
     st.text_area("Copie a lista abaixo e mande direto para a distribuidora de ferro:", value=texto_copiar, height=120)
