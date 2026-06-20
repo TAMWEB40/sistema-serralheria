@@ -1,10 +1,15 @@
 import streamlit as st
-from google import genai
+import google.generativeai as genai
+from google.generativeai.types import GenerationConfig
 import json
 import pandas as pd
 
 # CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Sistema de Orçamentos Pro - JPL Trailers", layout="wide", page_icon="🛠️")
+
+# CONFIGURAÇÃO DA CHAVE DA IA (GEMINI)
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # ---- PAINEL LATERAL: DADOS DA EMPRESA E PARÂMETROS ----
 st.sidebar.header("🏢 Dados da Empresa (Cabeçalho)")
@@ -53,8 +58,8 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     else:
         with st.spinner("Analisando o projeto e calculando materiais..."):
             try:
-                # Inicializando o cliente com a nova biblioteca oficial do Google
-                client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+                # Usando o modelo clássico estável compatível com SDK antigo
+                model = genai.GenerativeModel('gemini-pro')
                 
                 prompt = f"""
                 Você é um orçamentista especialista em serralheria e estruturas metálicas.
@@ -72,12 +77,8 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 }}
                 """
                 
-                # Nova chamada simplificada e 100% compatível com gemini-2.5-flash
-                response = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=prompt,
-                )
-                
+                # Chamada padrão limpa sem argumentos extras que quebram versões antigas
+                response = model.generate_content(prompt)
                 texto_resposta = response.text.strip()
                 
                 if texto_resposta.startswith("```json"):
