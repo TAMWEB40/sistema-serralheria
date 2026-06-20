@@ -1,15 +1,10 @@
 import streamlit as st
-import google.generativeai as genai
-from google.generativeai.types import GenerationConfig
+import requests
 import json
 import pandas as pd
 
 # CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Sistema de Orçamentos Pro - JPL Trailers", layout="wide", page_icon="🛠️")
-
-# CONFIGURAÇÃO DA CHAVE DA IA (GEMINI)
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # ---- PAINEL LATERAL: DADOS DA EMPRESA E PARÂMETROS ----
 st.sidebar.header("🏢 Dados da Empresa (Cabeçalho)")
@@ -58,8 +53,9 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     else:
         with st.spinner("Analisando o projeto e calculando materiais..."):
             try:
-                # Usando o modelo clássico estável compatível com SDK antigo
-                model = genai.GenerativeModel('gemini-pro')
+                api_key = st.secrets["GEMINI_API_KEY"]
+                # Mudança crucial: Usando endpoint oficial v1 e o modelo estável mais recente
+                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
                 
                 prompt = f"""
                 Você é um orçamentista especialista em serralheria e estruturas metálicas.
@@ -67,7 +63,7 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 
                 Pedido: "{texto_cliente}"
                 
-                Responda ESTRITAMENTE no formato JSON abaixo, sem textos adicionais, notas ou marcações em markdown. O preço unitário deve ser uma estimativa média de mercado se não informada.
+                Responda ESTRITAMENTE no formato JSON abaixo, sem textos adicionais, notas ou marcações em markdown.
                 
                 {{
                   "prazo_dias": 5,
@@ -77,18 +73,26 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 }}
                 """
                 
-                # Chamada padrão limpa sem argumentos extras que quebram versões antigas
-                response = model.generate_content(prompt)
-                texto_resposta = response.text.strip()
+                payload = {
+                    "contents": [{
+                        "parts": [{"text": prompt}]
+                    }],
+                    "generationConfig": {
+                        "responseMimeType": "application/json"
+                    }
+                }
                 
-                if texto_resposta.startswith("```json"):
-                    texto_resposta = texto_resposta.replace("```json", "").replace("```", "")
+                headers = {'Content-Type': 'application/json'}
+                response = requests.post(url, headers=headers, json=payload)
+                response_json = response.json()
+                
+                texto_resposta = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
                 
                 dados_limpos = json.loads(texto_resposta)
                 st.session_state.dados_orcamento = dados_limpos
                 st.success("Texto interpretado com sucesso! Confira e ajuste os dados abaixo.")
             except Exception as e:
-                st.error(f"Erro ao processar com a IA. Usando base padrão para edição. Detalhe: {e}")
+                st.error(f"Erro ao processar com a IA. Detalhe: {e}")
 
 st.markdown("---")
 
@@ -133,14 +137,12 @@ with tab_cliente:
     st.markdown("---")
     st.markdown(f"## 💰 Valor Total do Investimento: **R$ {preco_final_cliente:,.2f}**")
     st.write("*Condições de pagamento: A combinar com o responsável técnico.*")
-    
-    st.caption("Para salvar ou enviar para o cliente, você pode tirar um print desta seção ou usar o comando do seu navegador para Imprimir em PDF.")
 
 with tab_interna:
     st.markdown("### 📊 Painel de Custos Internos e Lucro")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Gastos com Material", f"R$ {custo_materiais_total:,.2f}")
+    col1.metric("Gastos com Material", f"R$ {custo_materials_total:,.2f}")
     col2.metric("Pagamento de Diárias", f"R$ {custo_mao_de_obra_total:,.2f}")
     col3.metric("Lucro Líquido Limpo", f"R$ {lucro_liquido_empresa:,.2f}", delta=f"{margem_lucro}% Margem")
     
