@@ -1,14 +1,10 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import json
 import pandas as pd
 
 # CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Sistema de Orçamentos Pro - JPL Trailers", layout="wide", page_icon="🛠️")
-
-# CONFIGURAÇÃO DA CHAVE DA IA (GEMINI)
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # ---- PAINEL LATERAL: DADOS DA EMPRESA E PARÂMETROS ----
 st.sidebar.header("🏢 Dados da Empresa (Cabeçalho)")
@@ -45,7 +41,7 @@ if "dados_orcamento" not in st.session_state:
         "materiais": [
             {"Item": "Ferro / Metalon", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0},
             {"Item": "Consumíveis (Solda/Disco)", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0},
-            {"Item": "Tinta / Primer", "Quantidade": 1.0, "Lata": "lata", "Preco_Unitario": 80.0}
+            {"Item": "Tinta / Primer", "Quantidade": 1.0, "Unidade": "lata", "Preco_Unitario": 80.0}
         ]
     }
 
@@ -57,9 +53,8 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     else:
         with st.spinner("Analisando o projeto e calculando materiais..."):
             try:
-                # CONFIGURAÇÃO COMPATÍVEL COM TODAS AS VERSÕES DO CLIENTE
-                # Usamos o modelo 'gemini-1.5-flash' ou 'gemini-pro' de forma limpa
-                model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+                # Inicializando o cliente com a nova biblioteca oficial do Google
+                client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
                 
                 prompt = f"""
                 Você é um orçamentista especialista em serralheria e estruturas metálicas.
@@ -77,8 +72,12 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 }}
                 """
                 
-                # Chamada limpa e direta, compatível com a biblioteca instalada
-                response = model.generate_content(prompt)
+                # Nova chamada simplificada e 100% compatível com gemini-2.5-flash
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
+                
                 texto_resposta = response.text.strip()
                 
                 if texto_resposta.startswith("```json"):
@@ -149,7 +148,7 @@ with tab_interna:
     
     texto_copiar = ""
     for _, linha in df_editado.iterrows():
-        unidade_txt = linha['Unidade'] if 'Unidade' in df_editado.columns else (linha['Lata'] if 'Lata' in df_editado.columns else 'unid')
+        unidade_txt = linha['Unidade'] if 'Unidade' in df_editado.columns else 'unid'
         texto_copiar += f"- {linha['Quantidade']} {unidade_txt} de {linha['Item']}\n"
         
     st.text_area("Copie a lista abaixo e mande direto para a distribuidora de ferro:", value=texto_copiar, height=120)
