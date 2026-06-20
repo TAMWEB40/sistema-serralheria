@@ -7,12 +7,8 @@ import pandas as pd
 st.set_page_config(page_title="Sistema de Orçamentos Pro - JPL Trailers", layout="wide", page_icon="🛠️")
 
 # CONFIGURAÇÃO DA CHAVE DA IA (GEMINI)
-# Dica: Guarde sua API Key nos Secrets do Streamlit com o nome "GEMINI_API_KEY"
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-else:
-    # Caso não configurado nos secrets, tenta pegar de um campo ou deixa aviso
-    pass
 
 # ---- PAINEL LATERAL: DADOS DA EMPRESA E PARÂMETROS ----
 st.sidebar.header("🏢 Dados da Empresa (Cabeçalho)")
@@ -63,7 +59,6 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
             try:
                 model = genai.GenerativeModel('gemini-pro')
                 
-                # Prompt instruindo a IA a agir como um Orçamentista de Metalurgia experiente
                 prompt = f"""
                 Você é um orçamentista especialista em serralheria e estruturas metálicas.
                 Analise o seguinte pedido de serviço e extraia uma estimativa realista de materiais necessários e dias de trabalho necessários para fabricação.
@@ -83,7 +78,6 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 response = model.generate_content(prompt)
                 texto_resposta = response.text.strip()
                 
-                # Limpando possíveis blocos de código que a IA coloque
                 if texto_resposta.startswith("```json"):
                     texto_resposta = texto_resposta.replace("```json", "").replace("```", "")
                 
@@ -99,14 +93,11 @@ st.markdown("---")
 st.subheader("Etapa 2: Conferência e Ajustes")
 st.write("Altere qualquer valor abaixo se achar necessário. A IA sugere, mas quem dá a palavra final é você.")
 
-# Campo para alterar o prazo sugerido pela IA
 prazo_final = st.number_input("Prazo de Entrega Estimado (Dias)", value=int(st.session_state.dados_orcamento.get("prazo_dias", 5)), min_value=1)
 
-# Transformando a sugestão de materiais em um DataFrame para exibição editável
 df_materiais_original = pd.DataFrame(st.session_state.dados_orcamento.get("materiais"))
 
 st.write("**Lista de Materiais Necessários (Dê um duplo clique na célula para alterar quantidade ou preço):**")
-# Componente moderno do Streamlit que permite editar a tabela direto na tela
 df_editado = st.data_editor(df_materiais_original, num_rows="dynamic", use_container_width=True)
 
 st.markdown("---")
@@ -114,22 +105,19 @@ st.markdown("---")
 # ---- ETAPA 3: CÁLCULOS E EXIBIÇÃO DE RESULTADOS ----
 st.subheader("Etapa 3: Orçamento Final")
 
-# Cálculos Matemáticos Baseados nas Alterações do Usuário
 df_editado["Total_Item"] = df_editado["Quantidade"] * df_editado["Preco_Unitario"]
 custo_materiais_total = df_editado["Total_Item"].sum()
 custo_mao_de_obra_total = prazo_final * valor_diaria_total
 
-custo_total_producao = custo_materiais_total + custo_mao_de_obra_total
+custo_total_producao = custo_materials_total + custo_mao_de_obra_total
 preco_final_cliente = custo_total_producao * (1 + (margem_lucro / 100))
 lucro_liquido_empresa = preco_final_cliente - custo_total_producao
 
-# Criação das Abas Separadas de Visualização
 tab_cliente, tab_interna = st.tabs(["👤 VISÃO DO CLIENTE (O que enviar)", "🛠️ VISÃO DA EMPRESA (O que só você vê)"])
 
 with tab_cliente:
     st.markdown(f"### 📄 ORÇAMENTO DE SERVIÇO")
     
-    # Cabeçalho Comercial com os dados informados no painel lateral
     st.info(f"""
     **{nome_empresa}** *Responsável:* {responsavel} | *CNPJ/CPF:* {cnpj_cpf}  
     *Contato / WhatsApp:* {telefone} | *Local:* {endereco}  
@@ -156,7 +144,6 @@ with tab_interna:
     st.write("---")
     st.write("📋 **Lista de Compras Pronta para Enviar ao Fornecedor:**")
     
-    # Gera uma lista de texto limpa para o Jonatã copiar e colar no WhatsApp do fornecedor
     texto_copiar = ""
     for _, linha in df_editado.iterrows():
         texto_copiar += f"- {linha['Quantidade']} {linha['Unidade']} de {linha['Item']}\n"
