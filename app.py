@@ -57,10 +57,9 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     else:
         with st.spinner("Analisando o projeto e calculando materiais..."):
             try:
-                # MODELO ATUALIZADO E FORÇANDO VERSÃO DA API DE FORMA CORRETA
-                model = genai.GenerativeModel(
-                    model_name='gemini-2.5-flash'
-                )
+                # CONFIGURAÇÃO COMPATÍVEL COM TODAS AS VERSÕES DO CLIENTE
+                # Usamos o modelo 'gemini-1.5-flash' ou 'gemini-pro' de forma limpa
+                model = genai.GenerativeModel(model_name='gemini-1.5-flash')
                 
                 prompt = f"""
                 Você é um orçamentista especialista em serralheria e estruturas metálicas.
@@ -78,8 +77,8 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 }}
                 """
                 
-                # Forçando a requisição a usar a API v1 estável
-                response = model.generate_content(prompt, request_options={"api_version": "v1"})
+                # Chamada limpa e direta, compatível com a biblioteca instalada
+                response = model.generate_content(prompt)
                 texto_resposta = response.text.strip()
                 
                 if texto_resposta.startswith("```json"):
@@ -150,7 +149,6 @@ with tab_interna:
     
     texto_copiar = ""
     for _, linha in df_editado.iterrows():
-        # Verificando se a coluna se chama 'Unidade' ou 'Lata' para evitar erros
         unidade_txt = linha['Unidade'] if 'Unidade' in df_editado.columns else (linha['Lata'] if 'Lata' in df_editado.columns else 'unid')
         texto_copiar += f"- {linha['Quantidade']} {unidade_txt} de {linha['Item']}\n"
         
