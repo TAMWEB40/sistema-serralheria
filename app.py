@@ -106,10 +106,10 @@ st.markdown("---")
 st.subheader("Etapa 3: Orçamento Final")
 
 df_editado["Total_Item"] = df_editado["Quantidade"] * df_editado["Preco_Unitario"]
-custo_materiais_total = df_editado["Total_Item"].sum()
-custo_mao_de_obra_total = prazo_final * valor_diaria_total
+custo_materiais_total = float(df_editado["Total_Item"].sum())
+custo_mao_de_obra_total = float(prazo_final * valor_diaria_total)
 
-custo_total_producao = custo_materials_total + custo_mao_de_obra_total
+custo_total_producao = custo_materiais_total + custo_mao_de_obra_total
 preco_final_cliente = custo_total_producao * (1 + (margem_lucro / 100))
 lucro_liquido_empresa = preco_final_cliente - custo_total_producao
 
@@ -137,7 +137,7 @@ with tab_interna:
     st.markdown("### 📊 Painel de Custos Internos e Lucro")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Gastos com Material", f"R$ {custo_materials_total:,.2f}")
+    col1.metric("Gastos com Material", f"R$ {custo_materiais_total:,.2f}")
     col2.metric("Pagamento de Diárias", f"R$ {custo_mao_de_obra_total:,.2f}")
     col3.metric("Lucro Líquido Limpo", f"R$ {lucro_liquido_empresa:,.2f}", delta=f"{margem_lucro}% Margem")
     
