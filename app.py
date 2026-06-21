@@ -56,7 +56,7 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     else:
         with st.spinner("Analisando o projeto com a inteligência artificial do Google..."):
             try:
-                # Configura a chave de forma limpa
+                # Limpa a chave de qualquer caractere invisível ou aspas extras
                 api_key_limpa = st.secrets["GEMINI_API_KEY"].strip().replace('"', '').replace("'", "")
                 genai.configure(api_key=api_key_limpa)
                 
@@ -65,9 +65,7 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 
                 Gere uma estimativa realista com os materiais necessários (itens como metalon, tubos, chapas, eletrodos, discos de corte ou tintas), quantidades prováveis, unidade de medida correspondente, preço unitário estimado e o prazo total de fabricação em dias.
                 
-                Sua resposta DEVE ser estritamente um JSON válido, sem qualquer tipo de formatação markdown (NÃO use ```json ou ```), sem quebras de linha desnecessárias e sem texto explicativo antes ou depois.
-                
-                Siga exatamente esta estrutura:
+                Sua resposta DEVE ser estritamente um JSON válido seguindo exatamente esta estrutura:
                 {{
                   "prazo_dias": 4,
                   "materiais": [
@@ -77,23 +75,21 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 }}
                 """
                 
-                # Chamada direta e atualizada usando o modelo estável padrão
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                # Configuração reforçada para exigir resposta em formato JSON nativo
+                model = genai.GenerativeModel(
+                    model_name="models/gemini-1.5-flash",
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                
                 response = model.generate_content(prompt)
                 texto_resposta = response.text.strip()
-                
-                # Tratamento para garantir que pegamos apenas o bloco do JSON caso venha sujeira
-                if "{" in texto_resposta and "}" in texto_resposta:
-                    inicio = texto_resposta.find("{")
-                    fim = texto_resposta.rfind("}") + 1
-                    texto_resposta = texto_resposta[inicio:fim]
                 
                 st.session_state.dados_orcamento = json.loads(texto_resposta)
                 st.success("Texto interpretado com sucesso! Confira e ajuste os dados gerados na tabela abaixo.")
                 
             except Exception as e:
                 st.session_state.dados_orcamento = base_padrao
-                st.error(f"Aviso técnico: A IA respondeu fora do padrão estrutural. Siga ajustando manualmente na tabela abaixo se necessário.")
+                st.error(f"Erro detalhado detectado na conexão: {str(e)}")
 
 st.markdown("---")
 
@@ -113,9 +109,16 @@ st.markdown("---")
 # ---- ETAPA 3: CÁLCULOS E EXIBIÇÃO DE RESULTADOS ----
 st.subheader("Etapa 3: Orçamento Final")
 
-# Força conversão para tipos numéricos evitando erros de exibição
-df_editado["Quantidade"] = pd.to_numeric(df_editado["Quantidade"], errors='coerce').fillna(0)
-df_editado["Preco_Unitario"] = pd.to_numeric(df_editado["Preco_Unitario"], errors='coerce').fillna(0)
+# Proteções para garantir a conversão matemática correta mesmo com colunas vazias
+if "Quantidade" in df_editado.columns:
+    df_editado["Quantidade"] = pd.to_numeric(df_editado["Quantidade"], errors='coerce').fillna(0)
+else:
+    df_editado["Quantidade"] = 0
+
+if "Preco_Unitario" in df_editado.columns:
+    df_editado["Preco_Unitario"] = pd.to_numeric(df_editado["Preco_Unitario"], errors='coerce').fillna(0)
+else:
+    df_editado["Preco_Unitario"] = 0
 
 df_editado["Total_Item"] = df_editado["Quantidade"] * df_editado["Preco_Unitario"]
 custo_materiais_total = float(df_editado["Total_Item"].sum())
@@ -156,7 +159,9 @@ with tab_interna:
     
     texto_copiar = ""
     for _, linha in df_editado.iterrows():
+        item_nome = linha['Item'] if 'Item' in df_editado.columns else 'Item Desconhecido'
         unidade_txt = linha['Unidade'] if 'Unidade' in df_editado.columns else 'unid'
-        texto_copiar += f"- {linha['Quantidade']} {unidade_txt} de {linha['Item']}\n"
+        qtd_txt = linha['Quantidade'] if 'Quantidade' in df_editado.columns else 0
+        texto_copiar += f"- {qtd_txt} {unidade_txt} de {item_nome}\n"
         
     st.text_area("Copie a lista abaixo e mande direto para a distribuidora de ferro:", value=texto_copiar, height=120)
