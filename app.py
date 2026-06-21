@@ -81,7 +81,6 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 response = requests.post(url, headers=headers, json=payload)
                 response_json = response.json()
                 
-                # PROTEÇÃO CRUCIAL: Verifica se a resposta do Google tem o campo correto
                 if 'candidates' in response_json and response_json['candidates']:
                     texto_resposta = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
                     
@@ -91,7 +90,6 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                     st.session_state.dados_orcamento = json.loads(texto_resposta)
                     st.success("Texto interpretado com sucesso! Confira os dados gerados abaixo.")
                 else:
-                    # Se não vier 'candidates', aplica a base padrão sem quebrar a tela
                     st.session_state.dados_orcamento = base_padrao
                     st.warning("A IA gerou uma resposta incompleta. Carregamos uma planilha padrão editável para você preencher abaixo.")
                     
@@ -147,7 +145,7 @@ with tab_interna:
     st.markdown("### 📊 Painel de Custos Internos e Lucro")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Gastos com Material", f"R$ {custo_materials_total:,.2f}")
+    col1.metric("Gastos com Material", f"R$ {custo_materiais_total:,.2f}")
     col2.metric("Pagamento de Diárias", f"R$ {custo_mao_de_obra_total:,.2f}")
     col3.metric("Lucro Líquido Limpo", f"R$ {lucro_liquido_empresa:,.2f}", delta=f"{margem_lucro}% Margem")
     
