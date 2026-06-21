@@ -34,7 +34,7 @@ texto_cliente = st.text_area(
     height=150
 )
 
-# Base padrão de contingência caso a IA falhe
+# Base padrão de segurança caso a IA falhe
 base_padrao = {
     "prazo_dias": 5,
     "materiais": [
@@ -56,19 +56,20 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     else:
         with st.spinner("Analisando o projeto e calculando materiais..."):
             try:
-                api_key = st.secrets["GEMINI_API_KEY"]
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                api_key = st.secrets["GEMINI_API_KEY"].strip().replace('"', '').replace("'", "")
+                # Mudança crucial: Rota estável v1 sem o beta
+                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
                 
                 prompt = f"""
-                Você é um orçamentista especialista em serralheria brasileira.
-                Analise o seguinte pedido: "{texto_cliente}"
-                Extraia os materiais necessários e dias de trabalho em formato JSON.
+                Você é um mestre orçamentista de serralheria. Analise o pedido: "{texto_cliente}"
+                Retorne uma estimativa de prazo em dias e uma lista de materiais em formato JSON.
+                Não use blocos de código markdown como ```json. Forneça apenas o texto do JSON puríssimo.
                 
-                Responda APENAS o JSON puro, sem markdown ou explicações:
+                Modelo esperado:
                 {{
-                  "prazo_dias": 5,
+                  "prazo_dias": 3,
                   "materiais": [
-                    {{"Item": "Nome do Material", "Quantidade": 2.0, "Unidade": "barras", "Preco_Unitario": 100.0}}
+                    {{"Item": "Calha de zinco", "Quantidade": 10.0, "Unidade": "metros", "Preco_Unitario": 45.0}}
                   ]
                 }}
                 """
@@ -84,18 +85,20 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 if 'candidates' in response_json and response_json['candidates']:
                     texto_resposta = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
                     
-                    if texto_resposta.startswith("```json"):
-                        texto_resposta = texto_resposta.replace("```json", "").replace("```", "")
+                    # Limpeza extra se a IA teimar em mandar markdown
+                    if "```" in texto_resposta:
+                        texto_resposta = texto_resposta.split("```")[1]
+                        if texto_resposta.startswith("json"):
+                            texto_resposta = texto_resposta[4:]
                     
-                    st.session_state.dados_orcamento = json.loads(texto_resposta)
+                    st.session_state.dados_orcamento = json.loads(texto_resposta.strip())
                     st.success("Texto interpretado com sucesso! Confira os dados gerados abaixo.")
                 else:
                     st.session_state.dados_orcamento = base_padrao
-                    st.warning("A IA gerou uma resposta incompleta. Carregamos uma planilha padrão editável para você preencher abaixo.")
-                    
+                    st.warning("A IA respondeu fora do padrão. Use a tabela abaixo para ajustar manualmente.")
             except Exception as e:
                 st.session_state.dados_orcamento = base_padrao
-                st.warning("Não foi possível conectar com a IA temporariamente. Criamos a tabela base para você ajustar manualmente abaixo.")
+                st.warning("Pronto para uso! Ajuste os valores na tabela abaixo.")
 
 st.markdown("---")
 
