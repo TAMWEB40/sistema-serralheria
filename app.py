@@ -1,5 +1,5 @@
 import streamlit as st
-import requests
+import google.generativeai as genai
 import json
 import pandas as pd
 
@@ -54,52 +54,46 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     elif "GEMINI_API_KEY" not in st.secrets:
         st.info("🤖 Modo de Simulação Ativado (Adicione a GEMINI_API_KEY nos Secrets do Streamlit para ativar a IA real).")
     else:
-        with st.spinner("Analisando o projeto e calculando materiais..."):
+        with st.spinner("Analisando o projeto com a inteligência artificial do Google..."):
             try:
-                api_key = st.secrets["GEMINI_API_KEY"].strip().replace('"', '').replace("'", "")
-                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+                # Configura a chave de forma limpa
+                api_key_limpa = st.secrets["GEMINI_API_KEY"].strip().replace('"', '').replace("'", "")
+                genai.configure(api_key=api_key_limpa)
                 
                 prompt = f"""
-                Você é um mestre orçamentista de serralheria brasileira. Analise este pedido: "{texto_cliente}"
-                Gere uma lista de materiais prováveis para construir isso, com quantidades estimadas, unidade de medida e preço unitário médio de mercado, além do prazo estimado em dias.
+                Você é um mestre orçamentista de serralheria experiente no mercado brasileiro. Analise o seguinte pedido de serviço: "{texto_cliente}"
                 
-                Sua resposta deve ser EXCLUSIVAMENTE o texto JSON, sem usar blocos de código com ```json ou explicações extras.
+                Gere uma estimativa realista com os materiais necessários (itens como metalon, tubos, chapas, eletrodos, discos de corte ou tintas), quantidades prováveis, unidade de medida correspondente, preço unitário estimado e o prazo total de fabricação em dias.
                 
-                Modelo estrutural esperado:
+                Sua resposta DEVE ser estritamente um JSON válido, sem qualquer tipo de formatação markdown (NÃO use ```json ou ```), sem quebras de linha desnecessárias e sem texto explicativo antes ou depois.
+                
+                Siga exatamente esta estrutura:
                 {{
                   "prazo_dias": 4,
                   "materiais": [
-                    {{"Item": "Tubo Redondo de 1 polegada", "Quantidade": 3.0, "Unidade": "barras", "Preco_Unitario": 95.0}},
-                    {{"Item": "Eletrodo / Disco de Corte", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 40.0}}
+                    {{"Item": "Metalon 40x40 Chapa 18", "Quantidade": 3.0, "Unidade": "barras", "Preco_Unitario": 95.0}},
+                    {{"Item": "Disco de Corte 4.1/2", "Quantidade": 2.0, "Unidade": "unid", "Preco_Unitario": 7.0}}
                   ]
                 }}
                 """
                 
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}]
-                }
+                # Chamada direta e atualizada usando o modelo estável padrão
+                model = genai.GenerativeModel("gemini-1.5-flash")
+                response = model.generate_content(prompt)
+                texto_resposta = response.text.strip()
                 
-                headers = {'Content-Type': 'application/json'}
-                response = requests.post(url, headers=headers, json=payload)
-                response_json = response.json()
+                # Tratamento para garantir que pegamos apenas o bloco do JSON caso venha sujeira
+                if "{" in texto_resposta and "}" in texto_resposta:
+                    inicio = texto_resposta.find("{")
+                    fim = texto_resposta.rfind("}") + 1
+                    texto_resposta = texto_resposta[inicio:fim]
                 
-                if 'candidates' in response_json and response_json['candidates']:
-                    texto_resposta = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
-                    
-                    # Filtro avançado para extrair APENAS o JSON puro se a IA colocar texto extra
-                    if "{" in texto_resposta and "}" in texto_resposta:
-                        inicio = texto_resposta.find("{")
-                        fim = texto_resposta.rfind("}") + 1
-                        texto_resposta = texto_resposta[inicio:fim]
-                    
-                    st.session_state.dados_orcamento = json.loads(texto_resposta)
-                    st.success("Texto interpretado com sucesso! Confira os dados gerados abaixo.")
-                else:
-                    st.session_state.dados_orcamento = base_padrao
-                    st.warning("O servidor da IA demorou a responder. Carregamos a planilha padrão para você preencher abaixo.")
+                st.session_state.dados_orcamento = json.loads(texto_resposta)
+                st.success("Texto interpretado com sucesso! Confira e ajuste os dados gerados na tabela abaixo.")
+                
             except Exception as e:
                 st.session_state.dados_orcamento = base_padrao
-                st.warning("A IA gerou a tabela padrão. Você já pode ajustar os valores manualmente abaixo.")
+                st.error(f"Aviso técnico: A IA respondeu fora do padrão estrutural. Siga ajustando manualmente na tabela abaixo se necessário.")
 
 st.markdown("---")
 
@@ -118,6 +112,10 @@ st.markdown("---")
 
 # ---- ETAPA 3: CÁLCULOS E EXIBIÇÃO DE RESULTADOS ----
 st.subheader("Etapa 3: Orçamento Final")
+
+# Força conversão para tipos numéricos evitando erros de exibição
+df_editado["Quantidade"] = pd.to_numeric(df_editado["Quantidade"], errors='coerce').fillna(0)
+df_editado["Preco_Unitario"] = pd.to_numeric(df_editado["Preco_Unitario"], errors='coerce').fillna(0)
 
 df_editado["Total_Item"] = df_editado["Quantidade"] * df_editado["Preco_Unitario"]
 custo_materiais_total = float(df_editado["Total_Item"].sum())
