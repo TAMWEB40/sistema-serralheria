@@ -57,19 +57,20 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
         with st.spinner("Analisando o projeto e calculando materiais..."):
             try:
                 api_key = st.secrets["GEMINI_API_KEY"].strip().replace('"', '').replace("'", "")
-                # Mudança crucial: Rota estável v1 sem o beta
                 url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
                 
                 prompt = f"""
-                Você é um mestre orçamentista de serralheria. Analise o pedido: "{texto_cliente}"
-                Retorne uma estimativa de prazo em dias e uma lista de materiais em formato JSON.
-                Não use blocos de código markdown como ```json. Forneça apenas o texto do JSON puríssimo.
+                Você é um mestre orçamentista de serralheria brasileira. Analise este pedido: "{texto_cliente}"
+                Gere uma lista de materiais prováveis para construir isso, com quantidades estimadas, unidade de medida e preço unitário médio de mercado, além do prazo estimado em dias.
                 
-                Modelo esperado:
+                Sua resposta deve ser EXCLUSIVAMENTE o texto JSON, sem usar blocos de código com ```json ou explicações extras.
+                
+                Modelo estrutural esperado:
                 {{
-                  "prazo_dias": 3,
+                  "prazo_dias": 4,
                   "materiais": [
-                    {{"Item": "Calha de zinco", "Quantidade": 10.0, "Unidade": "metros", "Preco_Unitario": 45.0}}
+                    {{"Item": "Tubo Redondo de 1 polegada", "Quantidade": 3.0, "Unidade": "barras", "Preco_Unitario": 95.0}},
+                    {{"Item": "Eletrodo / Disco de Corte", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 40.0}}
                   ]
                 }}
                 """
@@ -85,20 +86,20 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 if 'candidates' in response_json and response_json['candidates']:
                     texto_resposta = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
                     
-                    # Limpeza extra se a IA teimar em mandar markdown
-                    if "```" in texto_resposta:
-                        texto_resposta = texto_resposta.split("```")[1]
-                        if texto_resposta.startswith("json"):
-                            texto_resposta = texto_resposta[4:]
+                    # Filtro avançado para extrair APENAS o JSON puro se a IA colocar texto extra
+                    if "{" in texto_resposta and "}" in texto_resposta:
+                        inicio = texto_resposta.find("{")
+                        fim = texto_resposta.rfind("}") + 1
+                        texto_resposta = texto_resposta[inicio:fim]
                     
-                    st.session_state.dados_orcamento = json.loads(texto_resposta.strip())
+                    st.session_state.dados_orcamento = json.loads(texto_resposta)
                     st.success("Texto interpretado com sucesso! Confira os dados gerados abaixo.")
                 else:
                     st.session_state.dados_orcamento = base_padrao
-                    st.warning("A IA respondeu fora do padrão. Use a tabela abaixo para ajustar manualmente.")
+                    st.warning("O servidor da IA demorou a responder. Carregamos a planilha padrão para você preencher abaixo.")
             except Exception as e:
                 st.session_state.dados_orcamento = base_padrao
-                st.warning("Pronto para uso! Ajuste os valores na tabela abaixo.")
+                st.warning("A IA gerou a tabela padrão. Você já pode ajustar os valores manualmente abaixo.")
 
 st.markdown("---")
 
