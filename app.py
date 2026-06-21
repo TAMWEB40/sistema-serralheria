@@ -34,16 +34,19 @@ texto_cliente = st.text_area(
     height=150
 )
 
-# Inicializando estados no sistema para guardar o que a IA processar
+# Base padrão de contingência caso a IA falhe
+base_padrao = {
+    "prazo_dias": 5,
+    "materiais": [
+        {"Item": "Ferro / Metalon / Chapa (Ajustar abaixo)", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0},
+        {"Item": "Consumíveis (Solda / Disco de Corte)", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0},
+        {"Item": "Tinta Automotiva / Primer", "Quantidade": 1.0, "Unidade": "lata", "Preco_Unitario": 80.0}
+    ]
+}
+
+# Inicializando estados no sistema
 if "dados_orcamento" not in st.session_state:
-    st.session_state.dados_orcamento = {
-        "prazo_dias": 5,
-        "materiais": [
-            {"Item": "Ferro / Metalon", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0},
-            {"Item": "Consumíveis (Solda/Disco)", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0},
-            {"Item": "Tinta / Primer", "Quantidade": 1.0, "Unidade": "lata", "Preco_Unitario": 80.0}
-        ]
-    }
+    st.session_state.dados_orcamento = base_padrao
 
 if st.button("🚀 Processar Texto com Inteligência Artificial"):
     if not texto_cliente:
@@ -54,45 +57,47 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
         with st.spinner("Analisando o projeto e calculando materiais..."):
             try:
                 api_key = st.secrets["GEMINI_API_KEY"]
-                # Mudança crucial: Usando endpoint oficial v1 e o modelo estável mais recente
-                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
                 
                 prompt = f"""
-                Você é um orçamentista especialista em serralheria e estruturas metálicas.
-                Analise o seguinte pedido de serviço e extraia uma estimativa realista de materiais necessários e dias de trabalho necessários para fabricação.
+                Você é um orçamentista especialista em serralheria brasileira.
+                Analise o seguinte pedido: "{texto_cliente}"
+                Extraia os materiais necessários e dias de trabalho em formato JSON.
                 
-                Pedido: "{texto_cliente}"
-                
-                Responda ESTRITAMENTE no formato JSON abaixo, sem textos adicionais, notas ou marcações em markdown.
-                
+                Responda APENAS o JSON puro, sem markdown ou explicações:
                 {{
                   "prazo_dias": 5,
                   "materiais": [
-                    {{"Item": "Nome do Material", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0}}
+                    {{"Item": "Nome do Material", "Quantidade": 2.0, "Unidade": "barras", "Preco_Unitario": 100.0}}
                   ]
                 }}
                 """
                 
                 payload = {
-                    "contents": [{
-                        "parts": [{"text": prompt}]
-                    }],
-                    "generationConfig": {
-                        "responseMimeType": "application/json"
-                    }
+                    "contents": [{"parts": [{"text": prompt}]}]
                 }
                 
                 headers = {'Content-Type': 'application/json'}
                 response = requests.post(url, headers=headers, json=payload)
                 response_json = response.json()
                 
-                texto_resposta = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
-                
-                dados_limpos = json.loads(texto_resposta)
-                st.session_state.dados_orcamento = dados_limpos
-                st.success("Texto interpretado com sucesso! Confira e ajuste os dados abaixo.")
+                # PROTEÇÃO CRUCIAL: Verifica se a resposta do Google tem o campo correto
+                if 'candidates' in response_json and response_json['candidates']:
+                    texto_resposta = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
+                    
+                    if texto_resposta.startswith("```json"):
+                        texto_resposta = texto_resposta.replace("```json", "").replace("```", "")
+                    
+                    st.session_state.dados_orcamento = json.loads(texto_resposta)
+                    st.success("Texto interpretado com sucesso! Confira os dados gerados abaixo.")
+                else:
+                    # Se não vier 'candidates', aplica a base padrão sem quebrar a tela
+                    st.session_state.dados_orcamento = base_padrao
+                    st.warning("A IA gerou uma resposta incompleta. Carregamos uma planilha padrão editável para você preencher abaixo.")
+                    
             except Exception as e:
-                st.error(f"Erro ao processar com a IA. Detalhe: {e}")
+                st.session_state.dados_orcamento = base_padrao
+                st.warning("Não foi possível conectar com a IA temporariamente. Criamos a tabela base para você ajustar manualmente abaixo.")
 
 st.markdown("---")
 
