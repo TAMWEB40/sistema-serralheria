@@ -1,36 +1,42 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Configuração correta da chave de API
-# Dica: No Streamlit Cloud, configure a sua chave nos "Secrets" como GEMINI_API_KEY
+st.title("🧪 Teste de Conexão com o Google Gemini")
+st.write("Vamos descobrir qual o modelo correto que funciona com a tua chave de API.")
+
+# Verificar e configurar a chave de API de forma limpa
 if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    api_key_limpa = st.secrets["GEMINI_API_KEY"].strip().replace('"', '').replace("'", "")
+    genai.configure(api_key=api_key_limpa)
+    st.success("🔑 Chave GEMINI_API_KEY detetada com sucesso nos Secrets!")
 else:
-    genai.configure(api_key="SUA_CHAVE_DE_TESTE_AQUI")
+    st.error("❌ Chave GEMINI_API_KEY NÃO encontrada nos Secrets do Streamlit.")
 
-# --- Dentro da Etapa 1, quando o utilizador clica no botão de processar ---
-texto_cliente = st.text_area("Cole aqui o texto enviado pelo cliente...")
+# Entrada de texto para teste
+texto_cliente = st.text_area("Insere um texto para testar a IA:", "Portão basculante de 3x2 metros na chapa 18")
 
-if st.button("🚀 Processar Texto com Inteligência Artificial"):
-    if texto_cliente:
-        try:
-            # Utilizar o modelo correto e estável
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            
-            # Chamada simples, sem argumentos inesperados como 'api_version'
-            response = model.generate_content(
-                f"Processe o seguinte pedido de serralharia e extraia os materiais: {texto_cliente}"
-            )
-            
-            # Verificar se a resposta foi gerada com sucesso antes de aceder aos dados
-            if response.text:
-                st.success("Texto processado com sucesso!")
-                st.write(response.text)
-                # Aqui insere a sua lógica para preencher a tabela/variáveis
-            else:
-                st.warning("A IA não conseguiu gerar uma resposta válida. Tente novamente.")
-                
-        except Exception as e:
-            st.error(f"Erro ao processar com a IA. Detalhe: {e}")
+# SELETOR DE MODELOS: Evita ter de mudar o código se um falhar
+modelo_selecionado = st.selectbox(
+    "Escolha o modelo da IA para testar:", 
+    ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+)
+
+if st.button("🚀 Testar Conexão com a IA"):
+    if not texto_cliente:
+        st.warning("Por favor, digite um texto antes de testar.")
     else:
-        st.error("Por favor, insira o texto do cliente antes de processar.")
+        with st.spinner(f"A ligar ao Google usando o modelo {modelo_selecionado}..."):
+            try:
+                # Inicializa o modelo selecionado na lista
+                model = genai.GenerativeModel(modelo_selecionado)
+                response = model.generate_content(f"Resuma brevemente os materiais necessários para: {texto_cliente}")
+                
+                if response.text:
+                    st.balloons()
+                    st.success(f"🎉 CONEXÃO BEM-SUCEDIDA COM O MODELO: {modelo_selecionado}!")
+                    st.write("**Resposta recebida da IA:**")
+                    st.write(response.text)
+                    
+            except Exception as e:
+                st.error(f"❌ Falha com o modelo {modelo_selecionado}.")
+                st.error(f"Erro reportado pelo servidor: {str(e)}")
