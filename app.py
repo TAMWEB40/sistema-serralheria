@@ -139,7 +139,8 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
                 if "```json" in texto_resposta:
                     texto_resposta = texto_resposta.split("```json")[1].split("```")[0].strip()
                 elif "```" in texto_resposta:
-                    texto_resposta = texto_resposta.split("```")[1].split("```")[0].strip()
+                    texto_resposta = texto_resposta.split("
+```")[1].split("```")[0].strip()
                 
                 dados_limpos = json.loads(texto_resposta)
                 
@@ -291,7 +292,7 @@ st.markdown("\n".join([linha.strip() for linha in orcamento_html.split("\n")]), 
 
 st.markdown("---")
 
-# 📥 NOVO: SISTEMA NATIVO DE IMPRESSÃO / SALVAMENTO EM PDF
+# 📥 EXPORTAR DOCUMENTO (CORRIGIDO: CSS adicionado para sumir com cabeçalhos/rodapés do navegador)
 st.subheader("📥 Exportar Documento")
 
 html_completo_para_impressao = f"""
@@ -303,7 +304,14 @@ html_completo_para_impressao = f"""
     <style>
         @media print {{
             .btn-imprimir {{ display: none !important; }}
-            body {{ background-color: white; }}
+            @page {{
+                size: auto;
+                margin: 0; /* CORREÇÃO: Remove o link do arquivo no rodapé e o título no cabeçalho */
+            }}
+            body {{ 
+                background-color: white !important; 
+                padding: 20mm 15mm !important; /* Mantém o espaçamento interno do documento profissional */
+            }}
         }}
     </style>
 </head>
@@ -335,7 +343,7 @@ st.subheader("📊 Resumo Geral e Análise de Custos Internos")
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Custo Materiais", f"R$ {custo_total_materiais:,.2f}")
+    st.metric("Custo Materials", f"R$ {custo_total_materiais:,.2f}")
 with col2:
     st.metric("Custo Mão de Obra", f"R$ {custo_total_mao_obra:,.2f}")
 with col3:
