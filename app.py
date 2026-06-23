@@ -21,7 +21,7 @@ if 'dados_ia' not in st.session_state:
         'materiais': [
             {"Item": "Ferro / Metalon / Chapa (Ajustar abaixo)", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0},
             {"Item": "Consumíveis (Solda / Disco de Corte)", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0},
-            {"Item": "Tinta Automotiva / Primer", "Quantidade": 1.0, "Unidade": "lata", "Preco_Unitario": 80.0}
+            {"Item": "Tinta Automotiva / Primer", "Quantidade": 1.0, "Lata": "lata", "Preco_Unitario": 80.0}
         ]
     }
 
@@ -94,7 +94,8 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     if texto_cliente:
         with st.spinner("A IA está gerando a lista de materiais e estruturando o escopo técnico formal..."):
             try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # CORREÇÃO: Atualizado para o modelo gemini-2.5-flash ativo e estável
+                model = genai.GenerativeModel('gemini-2.5-flash')
                 
                 # Prompt otimizado para separar escopo técnico da mensagem bruta
                 prompt = f"""
@@ -164,7 +165,7 @@ df_materiais_ajustado = st.data_editor(
 # CÁLCULOS
 # -----------------------------------------------------------------------------
 df_materiais_ajustado["Total_Item"] = df_materiais_ajustado["Quantidade"] * df_materiais_ajustado["Preco_Unitario"]
-custo_total_materiais = float(df_materiais_ajustado["Total_Item"].sum())
+custo_total_materials = float(df_materiais_ajustado["Total_Item"].sum())
 
 # Soma das diárias apenas dos trabalhadores ativos/marcados na tabela lateral
 df_alocados = df_equipe_atualizado[df_equipe_atualizado["Alocado"] == True]
@@ -172,7 +173,7 @@ custo_diario_equipe = float((df_alocados["Diária (R$)"]).sum())
 custo_total_mao_obra = custo_diario_equipe * prazo_entrega
 qtd_profissionais_alocados = len(df_alocados)
 
-custo_geral_projeto = custo_total_materiais + custo_total_mao_obra
+custo_geral_projeto = custo_total_materials + custo_total_mao_obra
 preco_venda_final = custo_geral_projeto * (1 + (margem_lucro / 100))
 
 st.markdown("---")
@@ -264,4 +265,4 @@ st.markdown("\n".join([linha.strip() for linha in orcamento_html.split("\n")]), 
 
 # Indicadores informativos de conferência rápida
 st.subheader(f"💰 Resumo Geral: R$ {preco_venda_final:,.2f}")
-st.write(f"*(Custo Materiais: R$ {custo_total_materiais:,.2f} | Custo Mão de Obra total: R$ {custo_total_mao_obra:,.2f} | Margem: {margem_lucro}%)*")
+st.write(f"*(Custo Materiais: R$ {custo_total_materials:,.2f} | Custo Mão de Obra total: R$ {custo_total_mao_obra:,.2f} | Margem: {margem_lucro}%)*")
