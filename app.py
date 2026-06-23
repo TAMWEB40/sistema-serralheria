@@ -42,29 +42,28 @@ else:
     genai.configure(api_key="SUA_CHAVE_DE_TESTE_AQUI")
 
 # -----------------------------------------------------------------------------
-# PAINEL LATERAL (SIDEBAR)
-# -----------------------------------------------------------------------------
-st.sidebar.header("🏢 Dados da Empresa (Cabeçalho)")
-nome_empresa = st.sidebar.text_input("Nome da Empresa", "JPL Trailers")
-cnpj_cpf = st.sidebar.text_input("CNPJ / CPF", "00.000.000/0001-00")
-responsavel = st.sidebar.text_input("Nome do Responsável", "Jonatã Carvalho")
-telefone = st.sidebar.text_input("Telefone / WhatsApp", "(71) 99999-9999")
-endereco = st.sidebar.text_input("Endereço", "Salvador, Bahia")
-rede_social = st.sidebar.text_input("Rede Social", "https://www.tiktok.com/")
+# ---- PAINEL DE CONFIGURAÇÕES NA VISUALIZAÇÃO PRINCIPAL ----
+with st.expander("⚙️ Painel de Controle e Parâmetros do Orçamento", expanded=True):
+    
+    st.header("🏢 Dados da Empresa (Cabeçalho)")
+    nome_empresa = st.text_input("Nome da Empresa", "JPL Trailers")
+    cnpj_cpf = st.text_input("CNPJ / CPF", "00.000.000/0001-00")
+    responsavel = st.text_input("Nome do Responsável", "Jonatã Carvalho")
+    telefone = st.text_input("Telefone / WhatsApp", "(71) 99999-9999")
+    endereco = st.text_input("Endereço", "Salvador, Bahia")
+    rede_social = st.text_input("Rede Social", "https://www.tiktok.com/")
 
-st.sidebar.markdown("---")
+    st.markdown("---")
+    st.header("👤 Dados do Cliente")
+    cliente_nome = st.text_input("Nome do Cliente", "Nome do Cliente Exemplo")
+    cliente_cpf = st.text_input("CPF / CNPJ do Cliente", "000.000.000-00")
+    cliente_tel = st.text_input("WhatsApp do Cliente", "(71) 98888-8888")
+    cliente_end = st.text_input("Endereço do Cliente", "Salvador, Bahia")
 
-# NOVO: Dados do Cliente que sairão no Orçamento impresso
-st.sidebar.header("👤 Dados do Cliente")
-cliente_nome = st.sidebar.text_input("Nome do Cliente", "Nome do Cliente Exemplo")
-cliente_cpf = st.sidebar.text_input("CPF / CNPJ do Cliente", "000.000.000-00")
-cliente_tel = st.sidebar.text_input("WhatsApp do Cliente", "(71) 98888-8888")
-cliente_end = st.sidebar.text_input("Endereço do Cliente", "Salvador, Bahia")
-
-st.sidebar.markdown("---")
-
-st.sidebar.header("💰 Parâmetros Financeiros")
-margem_lucro = st.sidebar.slider("Margem de Lucro (%)", min_value=10, max_value=100, value=40, step=5)
+    st.markdown("---")
+    st.header("💰 Parâmetros Financeiros")
+    valor_diaria_total = st.number_input("Custo Total da Diária (R$)", value=350.00, step=10.0)
+    margem_lucro = st.slider("Margem de Lucro (%)", min_value=10, max_value=100, value=40, step=5)
 
 # NOVO: Tabela dinâmica de diárias por trabalhador
 st.sidebar.subheader("👷 Equipe e Mão de Obra")
@@ -95,7 +94,7 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     if texto_cliente:
         with st.spinner("A IA está gerando a lista de materiais e estruturando o escopo técnico formal..."):
             try:
-                model = genai.GenerativeModel('gemini-2.0-flash')
+                model = genai.GenerativeModel('gemini-1.5-flash-latest')
                 
                 # Prompt otimizado para separar escopo técnico da mensagem bruta
                 prompt = f"""
