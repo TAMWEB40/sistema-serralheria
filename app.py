@@ -2,255 +2,267 @@ import streamlit as st
 import google.generativeai as genai
 import json
 import pandas as pd
-from fpdf import FPDF
 
+# -----------------------------------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
-st.set_page_config(page_title="Sistema de Orçamentos Pro - JPL Trailers", layout="wide", page_icon="🛠️")
+# -----------------------------------------------------------------------------
+st.set_page_config(
+    page_title="Sistema de Orçamentos Pro - JPL Trailers",
+    layout="wide",
+    page_icon="🛠️"
+)
 
-# FUNÇÃO PARA GERAR O ORÇAMENTO EM PDF
-def gerar_pdf(dados_empresa, escopo, prazo, total_geral, qtd_trab, valor_diaria):
-    pdf = FPDF()
-    pdf.add_page()
-    
-    # Função interna auxiliar para tratar acentuação padrão brasileira no FPDF
-    def tratar_texto(texto):
-        return str(texto).encode('latin-1', 'replace').decode('latin-1')
+# -----------------------------------------------------------------------------
+# INICIALIZAÇÃO DO ESTADO DA SESSÃO (SESSION STATE)
+# -----------------------------------------------------------------------------
+if 'dados_ia' not in st.session_state:
+    st.session_state['dados_ia'] = {
+        'escopo_tecnico': "Aguardando processamento do pedido...",
+        'materiais': [
+            {"Item": "Ferro / Metalon / Chapa (Ajustar abaixo)", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0},
+            {"Item": "Consumíveis (Solda / Disco de Corte)", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0},
+            {"Item": "Tinta Automotiva / Primer", "Quantidade": 1.0, "Unidade": "lata", "Preco_Unitario": 80.0}
+        ]
+    }
 
-    # Cabeçalho da Empresa
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, tratar_texto(dados_empresa['nome'].upper()), ln=True, align="C")
-    
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 5, tratar_texto(f"CNPJ / CPF: {dados_empresa['cnpj']} | Contato/WhatsApp: {dados_empresa['whatsapp']}"), ln=True, align="C")
-    pdf.cell(0, 5, tratar_texto(f"Responsável Técnico: {dados_empresa['responsavel']} | Localidade: {dados_empresa['endereco']}"), ln=True, align="C")
-    pdf.ln(10)
-    
-    # Linha Divisória Visual
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(5)
-    
-    # Título do Documento
-    pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, tratar_texto("ORÇAMENTO FORMAL DE SERVIÇO"), ln=True, align="L")
-    pdf.ln(3)
-    
-    # Descrição do Escopo do Projeto
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 6, tratar_texto("1. Descrição do Escopo Técnico:"), ln=True)
-    pdf.set_font("Helvetica", "", 11)
-    pdf.multi_cell(0, 6, tratar_texto(escopo))
-    pdf.ln(5)
-    
-    # Detalhamento de Execução e Prazos
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 6, tratar_texto("2. Cronograma e Recursos Estimados:"), ln=True)
-    pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 6, tratar_texto(f"- Período de execução estimado: {prazo} dias úteis."), ln=True)
-    pdf.cell(0, 6, tratar_texto(f"- Dimensionamento da equipe técnica alocada: {qtd_trab} profissional(is)."), ln=True)
-    pdf.ln(8)
-    
-    # Linha Divisória de Fechamento Financeiro
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(4)
-    
-    # Valor de Investimento Total do Cliente
-    pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 8, tratar_texto(f"VALOR TOTAL DO INVESTIMENTO: R$ {total_geral:,.2f}"), ln=True)
-    
-    pdf.set_font("Helvetica", "I", 10)
-    pdf.cell(0, 6, tratar_texto("* Condições de pagamento padrão: A combinar diretamente com o responsável técnico."), ln=True)
-    pdf.cell(0, 5, tratar_texto("* Este documento é uma estimativa com base nas dimensões e parâmetros informados."), ln=True)
-    
-    return pdf.output()
+if 'df_equipe' not in st.session_state:
+    # Sua equipe pré-configurada da oficina
+    st.session_state['df_equipe'] = pd.DataFrame([
+        {"Trabalhador": "Jonatã Carvalho", "Diária (R$)": 150.0, "Alocado": True},
+        {"Trabalhador": "Dantas", "Diária (R$)": 120.0, "Alocado": True},
+        {"Trabalhador": "Ezequiel", "Diária (R$)": 120.0, "Alocado": False}
+    ])
 
+# -----------------------------------------------------------------------------
+# CONFIGURAÇÃO DA CHAVE DA API GEMINI
+# -----------------------------------------------------------------------------
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    genai.configure(api_key="SUA_CHAVE_DE_TESTE_AQUI")
 
-# ---- PAINEL LATERAL: DADOS DA EMPRESA E PARÂMETROS ----
+# -----------------------------------------------------------------------------
+# PAINEL LATERAL (SIDEBAR)
+# -----------------------------------------------------------------------------
 st.sidebar.header("🏢 Dados da Empresa (Cabeçalho)")
 nome_empresa = st.sidebar.text_input("Nome da Empresa", "JPL Trailers")
 cnpj_cpf = st.sidebar.text_input("CNPJ / CPF", "00.000.000/0001-00")
 responsavel = st.sidebar.text_input("Nome do Responsável", "Jonatã Carvalho")
 telefone = st.sidebar.text_input("Telefone / WhatsApp", "(71) 99999-9999")
 endereco = st.sidebar.text_input("Endereço", "Salvador, Bahia")
-rede_social_url = st.sidebar.text_input("Link da Rede Social (TikTok/Instagram)", "https://www.tiktok.com/")
+rede_social = st.sidebar.text_input("Rede Social", "https://www.tiktok.com/")
 
 st.sidebar.markdown("---")
+
+# NOVO: Dados do Cliente que sairão no Orçamento impresso
+st.sidebar.header("👤 Dados do Cliente")
+cliente_nome = st.sidebar.text_input("Nome do Cliente", "Nome do Cliente Exemplo")
+cliente_cpf = st.sidebar.text_input("CPF / CNPJ do Cliente", "000.000.000-00")
+cliente_tel = st.sidebar.text_input("WhatsApp do Cliente", "(71) 98888-8888")
+cliente_end = st.sidebar.text_input("Endereço do Cliente", "Salvador, Bahia")
+
+st.sidebar.markdown("---")
+
 st.sidebar.header("💰 Parâmetros Financeiros")
-
-# Campos atualizados para dimensionamento manual da equipe
-qtd_trabalhadores = st.sidebar.number_input("Quantidade de Trabalhadores", min_value=1, value=1, step=1)
-valor_diaria_individual = st.sidebar.number_input("Valor da Diária por Trabalhador (R$)", min_value=0.0, value=150.0, step=10.0)
-
-# Multiplicação automática para gerar a diária operacional completa
-valor_diaria_total = float(qtd_trabalhadores * valor_diaria_individual)
-st.sidebar.info(f"💵 Custo Diário da Equipe: R$ {valor_diaria_total:.2f}")
-
 margem_lucro = st.sidebar.slider("Margem de Lucro (%)", min_value=10, max_value=100, value=40, step=5)
 
-# TÍTULO PRINCIPAL
+# NOVO: Tabela dinâmica de diárias por trabalhador
+st.sidebar.subheader("👷 Equipe e Mão de Obra")
+df_equipe_atualizado = st.sidebar.data_editor(
+    st.session_state['df_equipe'],
+    column_config={
+        "Alocado": st.column_config.CheckboxColumn("Alocado?", default=True),
+        "Diária (R$)": st.column_config.NumberColumn("Diária (R$)", min_value=0.0, format="R$ %.2f"),
+        "Trabalhador": st.column_config.TextColumn("Nome do Profissional")
+    },
+    num_rows="dynamic",
+    key="editor_equipe_v2"
+)
+st.session_state['df_equipe'] = df_equipe_atualizado
+
+# -----------------------------------------------------------------------------
+# CONTEÚDO PRINCIPAL
+# -----------------------------------------------------------------------------
 st.title("🛠️ Sistema de Orçamentos Inteligente")
-st.write("Cole a conversa do WhatsApp ou a descrição do cliente. A IA vai ler, quantificar os materiais e você confere tudo antes de gerar o preço.")
+st.write("Insira a conversa do WhatsApp abaixo para extrair materiais e formatar o escopo do projeto.")
 
 st.markdown("---")
 
-# ---- ETAPA 1: ENTRADA DA IA ----
 st.subheader("Etapa 1: Resumo do Pedido (Conversa do WhatsApp)")
-texto_cliente = st.text_area(
-    "Cole aqui o texto enviado pelo cliente ou os detalhes que você discutiu:",
-    placeholder="Exemplo: Portão basculante de 3x2 metros na chapa 18 com social embutido, pintura automotiva e instalação no Imbuí.",
-    height=150
-)
-
-# Base padrão de segurança caso a IA falhe
-base_padrao = {
-    "prazo_dias": 5,
-    "materiais": [
-        {"Item": "Ferro / Metalon / Chapa (Ajustar abaixo)", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0},
-        {"Item": "Consumíveis (Solda / Disco de Corte)", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0},
-        {"Item": "Tinta Automotiva / Primer", "Quantidade": 1.0, "Unidade": "lata", "Preco_Unitario": 80.0}
-    ]
-}
-
-# Inicializando estados no sistema
-if "dados_orcamento" not in st.session_state:
-    st.session_state.dados_orcamento = base_padrao
+texto_cliente = st.text_area("Cole aqui a mensagem do cliente para a IA interpretar:", height=120)
 
 if st.button("🚀 Processar Texto com Inteligência Artificial"):
-    if not texto_cliente:
-        st.warning("Por favor, digite ou cole algum texto antes de processar.")
-    elif "GEMINI_API_KEY" not in st.secrets:
-        st.info("🤖 Modo de Simulação Ativado (Adicione a GEMINI_API_KEY nos Secrets do Streamlit para ativar a IA real).")
-    else:
-        with st.spinner("Analisando o projeto com a inteligência artificial do Google..."):
+    if texto_cliente:
+        with st.spinner("A IA está gerando a lista de materiais e estruturando o escopo técnico formal..."):
             try:
-                # Configura a chave de forma limpa
-                api_key_limpa = st.secrets["GEMINI_API_KEY"].strip().replace('"', '').replace("'", "")
-                genai.configure(api_key=api_key_limpa)
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 
+                # Prompt otimizado para separar escopo técnico da mensagem bruta
                 prompt = f"""
-                Você é um mestre orçamentista de serralheria experiente no mercado brasileiro. Analise o seguinte pedido de serviço: "{texto_cliente}"
+                Você é um assistente especialista em serralheria, estruturas metálicas e reboques.
+                O cliente enviou a seguinte mensagem/pedido:
+                "{texto_cliente}"
                 
-                Gere uma estimativa realista com os materiais necessários (itens como metalon, tubos, chapas, eletrodos, discos de corte ou tintas), quantidades prováveis, unidade de medida correspondente, preço unitário estimado e o prazo total de fabricação em dias.
+                Com base nessa mensagem, realize as seguintes tarefas:
+                1. Escreva uma 'Descrição do Escopo Técnico' formal, comercial e profissional que descreva o serviço que será executado (sem gírias e bem estruturado).
+                2. Identifique os materiais necessários para este serviço e estime a quantidade, unidade e um preço unitário padrão de mercado em Reais (R$).
                 
-                Siga exatamente esta estrutura JSON:
+                Retorne a resposta OBRIGATORIAMENTE no formato JSON abaixo, sem qualquer outro texto explicativo antes ou depois:
                 {{
-                  "prazo_dias": 4,
-                  "materiais": [
-                    {{"Item": "Metalon 40x40 Chapa 18", "Quantidade": 3.0, "Unidade": "barras", "Preco_Unitario": 95.0}},
-                    {{"Item": "Disco de Corte 4.1/2", "Quantidade": 2.0, "Unidade": "unid", "Preco_Unitario": 7.0}}
-                  ]
+                    "escopo_tecnico": "Texto do escopo técnico profissional aqui.",
+                    "materiais": [
+                        {{"Item": "Nome do Material 1", "Quantidade": 2.0, "Unidade": "barras", "Preco_Unitario": 120.0}},
+                        {{"Item": "Nome do Material 2", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0}}
+                    ]
                 }}
                 """
                 
-                # Chamada com o modelo correto e configuração nativa para JSON estruturado
-                model = genai.GenerativeModel("gemini-2.5-flash")
-                response = model.generate_content(
-                    prompt,
-                    generation_config={"response_mime_type": "application/json"}
-                )
+                response = model.generate_content(prompt)
                 texto_resposta = response.text.strip()
                 
-                st.session_state.dados_orcamento = json.loads(texto_resposta)
-                st.success("Texto interpretado com sucesso! Confira e ajuste os dados gerados na tabela abaixo.")
+                if "```json" in texto_resposta:
+                    texto_resposta = texto_resposta.split("```json")[1].split("```")[0].strip()
+                elif "```" in texto_resposta:
+                    texto_resposta = texto_resposta.split("```")[1].split("```")[0].strip()
+                
+                dados_limpos = json.loads(texto_resposta)
+                
+                st.session_state['dados_ia']['escopo_tecnico'] = dados_limpos.get("escopo_tecnico", "Serviço personalizado de serralheria.")
+                st.session_state['dados_ia']['materiais'] = dados_limpos.get("materiais", [])
+                st.success("Texto interpretado com sucesso!")
                 
             except Exception as e:
-                st.session_state.dados_orcamento = base_padrao
-                st.error(f"Aviso técnico: A IA respondeu fora do padrão estrutural. Siga ajustando manualmente na tabela abaixo se necessário.")
+                st.error(f"Erro ao processar: {e}")
 
 st.markdown("---")
 
-# ---- ETAPA 2: ÁREA DE CONFERÊNCIA (EDITÁVEL) ----
 st.subheader("Etapa 2: Conferência e Ajustes")
-st.write("Altere qualquer valor abaixo se achar necessário. A IA sugere, mas quem dá a palavra final é você.")
+prazo_entrega = st.number_input("Prazo de Entrega Estimado (Dias)", min_value=1, value=5, step=1)
 
-prazo_final = st.number_input("Prazo de Entrega Estimado (Dias)", value=int(st.session_state.dados_orcamento.get("prazo_dias", 5)), min_value=1)
+# AJUSTADO: Campo de texto livre para você refinar o escopo técnico trazido pela IA
+escopo_corrigido = st.text_area(
+    "📝 Descrição do Escopo Técnico (Editável):", 
+    value=st.session_state['dados_ia']['escopo_tecnico'],
+    height=100
+)
 
-df_materiais_original = pd.DataFrame(st.session_state.dados_orcamento.get("materiais"))
+st.write("📋 **Lista de Materiais Necessários** (Ajuste quantidades ou preços dando duplo clique):")
+df_materiais = pd.DataFrame(st.session_state['dados_ia']['materiais'])
 
-st.write("**Lista de Materiais Necessários (Dê um duplo clique na célula para alterar quantidade ou preço):**")
-df_editado = st.data_editor(df_materiais_original, num_rows="dynamic", use_container_width=True)
+df_materiais_ajustado = st.data_editor(
+    df_materiais,
+    column_config={
+        "Quantidade": st.column_config.NumberColumn("Quantidade", min_value=0.0, format="%.2f"),
+        "Preco_Unitario": st.column_config.NumberColumn("Preço Unitário (R$)", min_value=0.0, format="R$ %.2f"),
+        "Unidade": st.column_config.TextColumn("Unidade"),
+        "Item": st.column_config.TextColumn("Item / Material")
+    },
+    num_rows="dynamic",
+    key="editor_materiais_v2"
+)
+
+# -----------------------------------------------------------------------------
+# CÁLCULOS
+# -----------------------------------------------------------------------------
+df_materiais_ajustado["Total_Item"] = df_materiais_ajustado["Quantidade"] * df_materiais_ajustado["Preco_Unitario"]
+custo_total_materiais = float(df_materiais_ajustado["Total_Item"].sum())
+
+# Soma das diárias apenas dos trabalhadores ativos/marcados na tabela lateral
+df_alocados = df_equipe_atualizado[df_equipe_atualizado["Alocado"] == True]
+custo_diario_equipe = float((df_alocados["Diária (R$)"]).sum())
+custo_total_mao_obra = custo_diario_equipe * prazo_entrega
+qtd_profissionais_alocados = len(df_alocados)
+
+custo_geral_projeto = custo_total_materiais + custo_total_mao_obra
+preco_venda_final = custo_geral_projeto * (1 + (margem_lucro / 100))
 
 st.markdown("---")
 
-# ---- ETAPA 3: CÁLCULOS E EXIBIÇÃO DE RESULTADOS ----
+# ETAPA 3: Exibição do Orçamento Final Formatado
 st.subheader("Etapa 3: Orçamento Final")
 
-# Força conversão para tipos numéricos evitando erros de exibição
-df_editado["Quantidade"] = pd.to_numeric(df_editado["Quantidade"], errors='coerce').fillna(0)
-df_editado["Preco_Unitario"] = pd.to_numeric(df_editado["Preco_Unitario"], errors='coerce').fillna(0)
+orcamento_html = f"""
+<div style="background-color: white; padding: 30px; border: 1px solid #d3d3d3; border-radius: 5px; color: black; font-family: Arial, sans-serif;">
+    
+    <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 15px;">
+        <h2 style="margin: 0; color: #111;">{nome_empresa.upper()}</h2>
+        <p style="margin: 5px 0; font-size: 13px; color: #555;">
+            CNPJ/CPF: {cnpj_cpf} | Contato/WhatsApp: {telefone}<br>
+            Responsável Técnico: {responsavel} | Localidade: {endereco}<br>
+            Rede Social: {rede_social}
+        </p>
+    </div>
+    
+    <div style="margin-top: 20px; background-color: #f9f9f9; padding: 12px; border-radius: 4px; border-left: 4px solid #007acc;">
+        <h4 style="margin: 0 0 8px 0; color: #007acc;">DADOS DO CLIENTE</h4>
+        <table style="width: 100%; font-size: 13px; color: #333;">
+            <tr>
+                <td style="width: 50%;"><strong>Cliente:</strong> {cliente_nome}</td>
+                <td style="width: 50%;"><strong>CPF/CNPJ:</strong> {cliente_cpf}</td>
+            </tr>
+            <tr>
+                <td style="width: 50%;"><strong>WhatsApp:</strong> {cliente_tel}</td>
+                <td style="width: 50%;"><strong>Endereço:</strong> {cliente_end}</td>
+            </tr>
+        </table>
+    </div>
 
-df_editado["Total_Item"] = df_editado["Quantidade"] * df_editado["Preco_Unitario"]
-custo_materiais_total = float(df_editado["Total_Item"].sum())
-custo_mao_de_obra_total = float(prazo_final * valor_diaria_total)
+    <h3 style="text-align: center; margin-top: 25px; letter-spacing: 1px; color: #222;">ORÇAMENTO FORMAL DE SERVIÇO</h3>
+    
+    <div style="margin-top: 15px;">
+        <h4 style="margin-bottom: 5px; color: #111;">1. Descrição do Escopo Técnico:</h4>
+        <p style="font-size: 14px; line-height: 1.5; margin: 0; color: #333; text-align: justify;">
+            {escopo_corrigido}
+        </p>
+    </div>
+    
+    <div style="margin-top: 20px;">
+        <h4 style="margin-bottom: 5px; color: #111;">2. Cronograma e Recursos Estimados:</h4>
+        <ul style="font-size: 14px; margin: 0; padding-left: 20px; color: #333;">
+            <li>Período de execução estimado: <strong>{prazo_entrega} dias úteis</strong>.</li>
+            <li>Dimensionamento da equipe técnica alocada: <strong>{qtd_profissionais_alocados} profissional(is)</strong>.</li>
+        </ul>
+    </div>
+    
+    <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+        <h4 style="margin-bottom: 8px; color: #111;">Resumo dos Componentes do Projeto:</h4>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+            <thead>
+                <tr style="background-color: #f2f2f2; border-bottom: 1px solid #ddd;">
+                    <th style="padding: 6px;">Item</th>
+                    <th style="padding: 6px;">Qtd</th>
+                    <th style="padding: 6px;">Unidade</th>
+                </tr>
+            </thead>
+            <tbody>
+"""
 
-custo_total_producao = custo_materiais_total + custo_mao_de_obra_total
-preco_final_cliente = custo_total_producao * (1 + (margem_lucro / 100))
-lucro_liquido_empresa = preco_final_cliente - custo_total_producao
+for _, row in df_materiais_ajustado.iterrows():
+    orcamento_html += f"""
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 6px; color: #444;">{row['Item']}</td>
+                    <td style="padding: 6px; color: #444;">{row['Quantidade']:.2f}</td>
+                    <td style="padding: 6px; color: #444;">{row['Unidade']}</td>
+                </tr>
+    """
 
-tab_cliente, tab_interna = st.tabs(["👤 VISÃO DO CLIENTE (O que enviar)", "🛠️ VISÃO DA EMPRESA (O que só você vê)"])
+orcamento_html += f"""
+            </tbody>
+        </table>
+    </div>
 
-with tab_cliente:
-    st.markdown(f"### 📄 ORÇAMENTO DE SERVIÇO")
-    
-    st.info(f"""
-    **{nome_empresa}** | *Responsável:* {responsavel} | *CNPJ/CPF:* {cnpj_cpf}  
-    *Contato / WhatsApp:* {telefone} | *Local:* {endereco}  
-    🌐 [Siga nossa Rede Social no TikTok / Instagram]({rede_social_url})
-    """)
-    
-    st.write(f"**Descrição do Escopo:** {texto_cliente if texto_cliente else 'Projeto sob medida em serralheria.'}")
-    st.write(f"**Prazo de Entrega:** {prazo_final} dias úteis após aprovação.")
-    
-    st.markdown("---")
-    st.markdown(f"## 💰 Valor Total do Investimento: **R$ {preco_final_cliente:,.2f}**")
-    st.write("*Condições de pagamento: A combinar com o responsável técnico.*")
-    
-    # SEÇÃO PARA EXPORTAÇÃO EM PDF OFICIAL
-    st.markdown("---")
-    st.subheader("📥 Exportar Documento para o WhatsApp")
-    
-    dados_empresa_pdf = {
-        "nome": nome_empresa,
-        "cnpj": cnpj_cpf,
-        "responsavel": responsavel,
-        "whatsapp": telefone,
-        "endereco": endereco
-    }
-    
-    try:
-        # Montagem do PDF utilizando os bytes em memória do Streamlit
-        pdf_gerado_bytes = gerar_pdf(
-            dados_empresa=dados_empresa_pdf,
-            escopo=texto_cliente if texto_cliente else 'Projeto sob medida em serralheria.',
-            prazo=prazo_final,
-            total_geral=preco_final_cliente,
-            qtd_trab=qtd_trabalhadores,
-            valor_diaria=valor_diaria_individual
-        )
-        
-        st.download_button(
-            label="📥 Baixar Orçamento Oficial em PDF",
-            data=bytes(pdf_gerado_bytes),
-            file_name=f"Orcamento_JPL_{responsavel.replace(' ', '_')}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-    except Exception as erro_pdf:
-        st.error(f"Erro ao processar arquivo PDF: {erro_pdf}")
+    <div style="margin-top: 30px; border-top: 2px solid #333; padding-top: 15px; text-align: right;">
+        <h3 style="margin: 0; color: #111;">VALOR TOTAL DO INVESTIMENTO: <span style="color: #2e7d32;">R$ {preco_venda_final:,.2f}</span></h3>
+        <p style="margin: 5px 0 0 0; font-size: 12px; font-style: italic; color: #666;">
+            * Condições de pagamento: A combinar diretamente com a gerência.<br>
+            * Estimativa válida com base nas especificações técnicas fornecidas.
+        </p>
+    </div>
+</div>
+"""
 
-with tab_interna:
-    st.markdown("### 📊 Painel de Custos Internos e Lucro")
-    
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Gastos com Material", f"R$ {custo_materiais_total:,.2f}")
-    col2.metric("Pagamento de Diárias", f"R$ {custo_mao_de_obra_total:,.2f}")
-    col3.metric("Lucro Líquido Limpo", f"R$ {lucro_liquido_empresa:,.2f}", delta=f"{margem_lucro}% Margem")
-    
-    st.write("---")
-    st.write("📋 **Lista de Compras Pronta para Enviar ao Fornecedor:**")
-    
-    texto_copiar = ""
-    for _, linha in df_editado.iterrows():
-        unidade_txt = linha['Unidade'] if 'Unidade' in df_editado.columns else 'unid'
-        texto_copiar += f"- {linha['Quantidade']} {unidade_txt} de {linha['Item']}\n"
-        
-    st.text_area("Copie a lista abaixo e mande direto para a distribuidora de ferro:", value=texto_copiar, height=120)
+st.markdown(orcamento_html, unsafe_allow_html=True)
+
+# Indicadores informativos de conferência rápida
+st.subheader(f"💰 Resumo Geral: R$ {preco_venda_final:,.2f}")
+st.write(f"*(Custo Materiais: R$ {custo_total_materiais:,.2f} | Custo Mão de Obra total: R$ {custo_total_mao_obra:,.2f} | Margem: {margem_lucro}%)*")
