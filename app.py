@@ -2,9 +2,67 @@ import streamlit as st
 import google.generativeai as genai
 import json
 import pandas as pd
+from fpdf import FPDF
 
 # CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Sistema de Orçamentos Pro - JPL Trailers", layout="wide", page_icon="🛠️")
+
+# FUNÇÃO PARA GERAR O ORÇAMENTO EM PDF
+def gerar_pdf(dados_empresa, escopo, prazo, total_geral, qtd_trab, valor_diaria):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Função interna auxiliar para tratar acentuação padrão brasileira no FPDF
+    def tratar_texto(texto):
+        return str(texto).encode('latin-1', 'replace').decode('latin-1')
+
+    # Cabeçalho da Empresa
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, tratar_texto(dados_empresa['nome'].upper()), ln=True, align="C")
+    
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 5, tratar_texto(f"CNPJ / CPF: {dados_empresa['cnpj']} | Contato/WhatsApp: {dados_empresa['whatsapp']}"), ln=True, align="C")
+    pdf.cell(0, 5, tratar_texto(f"Responsável Técnico: {dados_empresa['responsavel']} | Localidade: {dados_empresa['endereco']}"), ln=True, align="C")
+    pdf.ln(10)
+    
+    # Linha Divisória Visual
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
+    
+    # Título do Documento
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, tratar_texto("ORÇAMENTO FORMAL DE SERVIÇO"), ln=True, align="L")
+    pdf.ln(3)
+    
+    # Descrição do Escopo do Projeto
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 6, tratar_texto("1. Descrição do Escopo Técnico:"), ln=True)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.multi_cell(0, 6, tratar_texto(escopo))
+    pdf.ln(5)
+    
+    # Detalhamento de Execução e Prazos
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 6, tratar_texto("2. Cronograma e Recursos Estimados:"), ln=True)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 6, tratar_texto(f"- Período de execução estimado: {prazo} dias úteis."), ln=True)
+    pdf.cell(0, 6, tratar_texto(f"- Dimensionamento da equipe técnica alocada: {qtd_trab} profissional(is)."), ln=True)
+    pdf.ln(8)
+    
+    # Linha Divisória de Fechamento Financeiro
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+    
+    # Valor de Investimento Total do Cliente
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 8, tratar_texto(f"VALOR TOTAL DO INVESTIMENTO: R$ {total_geral:,.2f}"), ln=True)
+    
+    pdf.set_font("Helvetica", "I", 10)
+    pdf.cell(0, 6, tratar_texto("* Condições de pagamento padrão: A combinar diretamente com o responsável técnico."), ln=True)
+    pdf.cell(0, 5, tratar_texto("* Este documento é uma estimativa com base nas dimensões e parâmetros informados."), ln=True)
+    
+    return pdf.output()
+
 
 # ---- PAINEL LATERAL: DADOS DA EMPRESA E PARÂMETROS ----
 st.sidebar.header("🏢 Dados da Empresa (Cabeçalho)")
@@ -17,7 +75,15 @@ rede_social_url = st.sidebar.text_input("Link da Rede Social (TikTok/Instagram)"
 
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Parâmetros Financeiros")
-valor_diaria_total = st.sidebar.number_input("Custo Total da Diária (R$)", value=350.00, step=10.0)
+
+# Campos atualizados para dimensionamento manual da equipe
+qtd_trabalhadores = st.sidebar.number_input("Quantidade de Trabalhadores", min_value=1, value=1, step=1)
+valor_diaria_individual = st.sidebar.number_input("Valor da Diária por Trabalhador (R$)", min_value=0.0, value=150.0, step=10.0)
+
+# Multiplicação automática para gerar a diária operacional completa
+valor_diaria_total = float(qtd_trabalhadores * valor_diaria_individual)
+st.sidebar.info(f"💵 Custo Diário da Equipe: R$ {valor_diaria_total:.2f}")
+
 margem_lucro = st.sidebar.slider("Margem de Lucro (%)", min_value=10, max_value=100, value=40, step=5)
 
 # TÍTULO PRINCIPAL
@@ -137,12 +203,44 @@ with tab_cliente:
     st.markdown("---")
     st.markdown(f"## 💰 Valor Total do Investimento: **R$ {preco_final_cliente:,.2f}**")
     st.write("*Condições de pagamento: A combinar com o responsável técnico.*")
+    
+    # SEÇÃO PARA EXPORTAÇÃO EM PDF OFICIAL
+    st.markdown("---")
+    st.subheader("📥 Exportar Documento para o WhatsApp")
+    
+    dados_empresa_pdf = {
+        "nome": nome_empresa,
+        "cnpj": cnpj_cpf,
+        "responsavel": responsavel,
+        "whatsapp": telefone,
+        "endereco": endereco
+    }
+    
+    try:
+        # Montagem do PDF utilizando os bytes em memória do Streamlit
+        pdf_gerado_bytes = gerar_pdf(
+            dados_empresa=dados_empresa_pdf,
+            escopo=texto_cliente if texto_cliente else 'Projeto sob medida em serralheria.',
+            prazo=prazo_final,
+            total_geral=preco_final_cliente,
+            qtd_trab=qtd_trabalhadores,
+            valor_diaria=valor_diaria_individual
+        )
+        
+        st.download_button(
+            label="📥 Baixar Orçamento Oficial em PDF",
+            data=bytes(pdf_gerado_bytes),
+            file_name=f"Orcamento_JPL_{responsavel.replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+    except Exception as erro_pdf:
+        st.error(f"Erro ao processar arquivo PDF: {erro_pdf}")
 
 with tab_interna:
     st.markdown("### 📊 Painel de Custos Internos e Lucro")
     
     col1, col2, col3 = st.columns(3)
-    # Correção efetuada aqui: alterado de custo_materials_total para custo_materiais_total
     col1.metric("Gastos com Material", f"R$ {custo_materiais_total:,.2f}")
     col2.metric("Pagamento de Diárias", f"R$ {custo_mao_de_obra_total:,.2f}")
     col3.metric("Lucro Líquido Limpo", f"R$ {lucro_liquido_empresa:,.2f}", delta=f"{margem_lucro}% Margem")
