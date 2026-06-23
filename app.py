@@ -94,7 +94,7 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     if texto_cliente:
         with st.spinner("A IA está gerando a lista de materiais e estruturando o escopo técnico formal..."):
             try:
-                model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 
                 # Prompt otimizado para separar escopo técnico da mensagem bruta
                 prompt = f"""
