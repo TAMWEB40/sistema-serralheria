@@ -21,7 +21,7 @@ if 'dados_ia' not in st.session_state:
         'materiais': [
             {"Item": "Ferro / Metalon / Chapa (Ajustar abaixo)", "Quantidade": 4.0, "Unidade": "barras", "Preco_Unitario": 120.0},
             {"Item": "Consumíveis (Solda / Disco de Corte)", "Quantidade": 1.0, "Unidade": "unid", "Preco_Unitario": 50.0},
-            {"Item": "Tinta Automotiva / Primer", "Quantidade": 1.0, "Lata": "lata", "Preco_Unitario": 80.0}
+            {"Item": "Tinta Automotiva / Primer", "Quantidade": 1.0, "Unidade": "lata", "Preco_Unitario": 80.0}
         ]
     }
 
@@ -40,6 +40,25 @@ if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
     genai.configure(api_key="SUA_CHAVE_DE_TESTE_AQUI")
+
+# -----------------------------------------------------------------------------
+# INTERFACE DA EQUIPE (MOVIDA PARA CIMA PARA CORREÇÃO DE BUG DE SINCRONIZAÇÃO)
+# -----------------------------------------------------------------------------
+st.sidebar.subheader("👷 Equipe e Mão de Obra")
+df_equipe_atualizado = st.sidebar.data_editor(
+    st.session_state['df_equipe'],
+    column_config={
+        "Alocado": st.column_config.CheckboxColumn("Alocado?", default=True),
+        "Diária (R$)": st.column_config.NumberColumn("Diária (R$)", min_value=0.0, format="R$ %.2f"),
+        "Trabalhador": st.column_config.TextColumn("Nome do Profissional")
+    },
+    num_rows="dynamic",
+    key="editor_equipe_v2"
+)
+# Cálculo imediato em tempo de execução para alimentar os Parâmetros Financeiros
+df_alocados = df_equipe_atualizado[df_equipe_atualizado["Alocado"] == True]
+custo_diario_equipe_calculado = float((df_alocados["Diária (R$)"]).sum())
+qtd_profissionais_alocados = len(df_alocados)
 
 # -----------------------------------------------------------------------------
 # ---- PAINEL DE CONFIGURAÇÕES NA VISUALIZAÇÃO PRINCIPAL ----
@@ -61,23 +80,22 @@ with st.expander("⚙️ Painel de Controle e Parâmetros do Orçamento", expand
     cliente_end = st.text_input("Endereço do Cliente", "Salvador, Bahia")
 
     st.markdown("---")
+    st.header("📝 Termos, Condições e Observações")
+    meio_pagamento = st.text_input("Meio de Pagamento", "50% de entrada + 50% na entrega")
+    observacoes_adicionais = st.text_area("Observações / Garantia do Orçamento", "Garantia de 1 ano na estrutura metálica contra defeitos de fabricação.")
+
+    st.markdown("---")
     st.header("💰 Parâmetros Financeiros")
-    valor_diaria_total = st.number_input("Custo Total da Diária (R$)", value=350.00, step=10.0)
+    # Sincronizado automaticamente com a tabela lateral de profissionais ativos!
+    valor_diaria_total = st.number_input("Custo Total da Diária (R$)", value=custo_diario_equipe_calculado, step=10.0)
     margem_lucro = st.slider("Margem de Lucro (%)", min_value=10, max_value=100, value=40, step=5)
 
-# NOVO: Tabela dinâmica de diárias por trabalhador
-st.sidebar.subheader("👷 Equipe e Mão de Obra")
-df_equipe_atualizado = st.sidebar.data_editor(
-    st.session_state['df_equipe'],
-    column_config={
-        "Alocado": st.column_config.CheckboxColumn("Alocado?", default=True),
-        "Diária (R$)": st.column_config.NumberColumn("Diária (R$)", min_value=0.0, format="R$ %.2f"),
-        "Trabalhador": st.column_config.TextColumn("Nome do Profissional")
-    },
-    num_rows="dynamic",
-    key="editor_equipe_v2"
-)
-st.session_state['df_equipe'] = df_equipe_atualizado
+    st.markdown("---")
+    st.subheader("🚀 Custos Adicionais Extra-Oficina")
+    custo_almoco = st.number_input("Custo com Almoço / Alimentação (R$)", value=0.0, step=10.0)
+    custo_equipamentos = st.number_input("Custo com Equipamentos / Locação externa (R$)", value=0.0, step=10.0)
+    custo_deslocamento = st.number_input("Custo com Deslocamento / Frete (R$)", value=0.0, step=10.0)
+    custo_outros = st.number_input("Outros Custos Adicionais (R$)", value=0.0, step=10.0)
 
 # -----------------------------------------------------------------------------
 # CONTEÚDO PRINCIPAL
@@ -94,10 +112,8 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
     if texto_cliente:
         with st.spinner("A IA está gerando a lista de materiais e estruturando o escopo técnico formal..."):
             try:
-                # CORREÇÃO: Atualizado para o modelo gemini-2.5-flash ativo e estável
                 model = genai.GenerativeModel('gemini-2.5-flash')
                 
-                # Prompt otimizado para separar escopo técnico da mensagem bruta
                 prompt = f"""
                 Você é um assistente especialista em serralheria, estruturas metálicas e reboques.
                 O cliente enviou a seguinte mensagem/pedido:
@@ -139,7 +155,6 @@ st.markdown("---")
 st.subheader("Etapa 2: Conferência e Ajustes")
 prazo_entrega = st.number_input("Prazo de Entrega Estimado (Dias)", min_value=1, value=5, step=1)
 
-# AJUSTADO: Campo de texto livre para você refinar o escopo técnico trazido pela IA
 escopo_corrigido = st.text_area(
     "📝 Descrição do Escopo Técnico (Editável):", 
     value=st.session_state['dados_ia']['escopo_tecnico'],
@@ -162,24 +177,29 @@ df_materiais_ajustado = st.data_editor(
 )
 
 # -----------------------------------------------------------------------------
-# CÁLCULOS
+# CÁLCULOS ATUALIZADOS COM CUSTOS OPERACIONAIS ADICIONAIS
 # -----------------------------------------------------------------------------
 df_materiais_ajustado["Total_Item"] = df_materiais_ajustado["Quantidade"] * df_materiais_ajustado["Preco_Unitario"]
-custo_total_materials = float(df_materiais_ajustado["Total_Item"].sum())
+custo_total_materiais = float(df_materiais_ajustado["Total_Item"].sum())
 
-# Soma das diárias apenas dos trabalhadores ativos/marcados na tabela lateral
-df_alocados = df_equipe_atualizado[df_equipe_atualizado["Alocado"] == True]
-custo_diario_equipe = float((df_alocados["Diária (R$)"]).sum())
-custo_total_mao_obra = custo_diario_equipe * prazo_entrega
-qtd_profissionais_alocados = len(df_alocados)
+custo_total_mao_obra = valor_diaria_total * prazo_entrega
+custo_extras_total = custo_almoco + custo_equipamentos + custo_deslocamento + custo_outros
 
-custo_geral_projeto = custo_total_materials + custo_total_mao_obra
+custo_geral_projeto = custo_total_materiais + custo_total_mao_obra + custo_extras_total
 preco_venda_final = custo_geral_projeto * (1 + (margem_lucro / 100))
+lucro_estimado = preco_venda_final - custo_geral_projeto
 
 st.markdown("---")
 
 # ETAPA 3: Exibição do Orçamento Final Formatado
 st.subheader("Etapa 3: Orçamento Final")
+
+# Criação de linhas de custos adicionais para o documento se houver valores digitados
+html_extras = ""
+if custo_almoco > 0: html_extras += f"<li>Alimentação / Almoço: <strong>R$ {custo_almoco:,.2f}</strong></li>"
+if custo_equipamentos > 0: html_extras += f"<li>Locação de Equipamentos especiais: <strong>R$ {custo_equipamentos:,.2f}</strong></li>"
+if custo_deslocamento > 0: html_extras += f"<li>Logística / Deslocamento / Frete: <strong>R$ {custo_deslocamento:,.2f}</strong></li>"
+if custo_outros > 0: html_extras += f"<li>Outros custos operacionais previstos: <strong>R$ {custo_outros:,.2f}</strong></li>"
 
 orcamento_html = f"""
 <div style="background-color: white; padding: 30px; border: 1px solid #d3d3d3; border-radius: 5px; color: black; font-family: Arial, sans-serif;">
@@ -221,6 +241,7 @@ orcamento_html = f"""
         <ul style="font-size: 14px; margin: 0; padding-left: 20px; color: #333;">
             <li>Período de execução estimado: <strong>{prazo_entrega} dias úteis</strong>.</li>
             <li>Dimensionamento da equipe técnica alocada: <strong>{qtd_profissionais_alocados} profissional(is)</strong>.</li>
+            {f'<li>Custos adicionais operacionais incluídos no escopo:<ul>{html_extras}</ul></li>' if html_extras else ''}
         </ul>
     </div>
     
@@ -251,18 +272,79 @@ orcamento_html += f"""
         </table>
     </div>
 
+    <div style="margin-top: 25px; background-color: #f5f5f5; padding: 15px; border-radius: 4px; border-left: 4px solid #2e7d32;">
+        <p style="margin: 0; font-size: 14px; color: #333;"><strong>💳 Condições de Pagamento:</strong> {meio_pagamento}</p>
+        <p style="margin: 8px 0 0 0; font-size: 14px; color: #333;"><strong>📝 Observações:</strong> {observacoes_adicionais}</p>
+    </div>
+
     <div style="margin-top: 30px; border-top: 2px solid #333; padding-top: 15px; text-align: right;">
         <h3 style="margin: 0; color: #111;">VALOR TOTAL DO INVESTIMENTO: <span style="color: #2e7d32;">R$ {preco_venda_final:,.2f}</span></h3>
         <p style="margin: 5px 0 0 0; font-size: 12px; font-style: italic; color: #666;">
-            * Condições de pagamento: A combinar diretamente com a gerência.<br>
-            * Estimativa válida com base nas especificações técnicas fornecidas.
+            * Estimativa válida com base nas especificações técnicas fornecidas e insumos atuais.
         </p>
     </div>
 </div>
 """
 
+# Renderiza o HTML na tela do Streamlit
 st.markdown("\n".join([linha.strip() for linha in orcamento_html.split("\n")]), unsafe_allow_html=True)
 
-# Indicadores informativos de conferência rápida
-st.subheader(f"💰 Resumo Geral: R$ {preco_venda_final:,.2f}")
-st.write(f"*(Custo Materiais: R$ {custo_total_materials:,.2f} | Custo Mão de Obra total: R$ {custo_total_mao_obra:,.2f} | Margem: {margem_lucro}%)*")
+st.markdown("---")
+
+# 📥 NOVO: SISTEMA NATIVO DE IMPRESSÃO / SALVAMENTO EM PDF
+st.subheader("📥 Exportar Documento")
+
+html_completo_para_impressao = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Orcamento_{cliente_nome.replace(' ', '_')}</title>
+    <style>
+        @media print {{
+            .btn-imprimir {{ display: none !important; }}
+            body {{ background-color: white; }}
+        }}
+    </style>
+</head>
+<body style="background-color: #f4f4f4; padding: 20px;">
+    <div class="btn-imprimir" style="max-width: 900px; margin: 0 auto 20px auto; text-align: center;">
+        <button onclick="window.print();" style="padding: 12px 30px; font-size: 16px; font-weight: bold; background-color: #2e7d32; color: white; border: none; border-radius: 4px; cursor: pointer; box-shadow: 0px 2px 5px rgba(0,0,0,0.2);">
+            🖨️ CLIQUE AQUI PARA IMPRIMIR OU SALVAR EM PDF
+        </button>
+    </div>
+    <div style="max-width: 900px; margin: 0 auto;">
+        {orcamento_html}
+    </div>
+</body>
+</html>
+"""
+
+st.download_button(
+    label="📥 Baixar Arquivo do Orçamento (Abra e Salve como PDF)",
+    data=html_completo_para_impressao,
+    file_name=f"Orcamento_{cliente_nome.replace(' ', '_')}.html",
+    mime="text/html"
+)
+
+# -----------------------------------------------------------------------------
+# RESUMO FINANCEIRO COMPLETO E DETALHADO NA TELA (MÉTRICAS)
+# -----------------------------------------------------------------------------
+st.markdown("---")
+st.subheader("📊 Resumo Geral e Análise de Custos Internos")
+
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Custo Materiais", f"R$ {custo_total_materiais:,.2f}")
+with col2:
+    st.metric("Custo Mão de Obra", f"R$ {custo_total_mao_obra:,.2f}")
+with col3:
+    st.metric("Custos Extras", f"R$ {custo_extras_total:,.2f}")
+with col4:
+    st.metric("Margem aplicada", f"{margem_lucro}%")
+
+col5, col6 = st.columns(2)
+with col5:
+    st.metric("Custo Bruto Total do Projeto", f"R$ {custo_geral_projeto:,.2f}")
+with col6:
+    st.metric("Lucro Estimado para Oficina", f"R$ {lucro_estimado:,.2f}")
