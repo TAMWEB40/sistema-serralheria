@@ -261,7 +261,7 @@ orcamento_html += f"""
 </div>
 """
 
-st.markdown(orcamento_html, unsafe_allow_html=True)
+st.markdown("\n".join([linha.strip() for linha in orcamento_html.split("\n")]), unsafe_allow_html=True)
 
 # Indicadores informativos de conferência rápida
 st.subheader(f"💰 Resumo Geral: R$ {preco_venda_final:,.2f}")
