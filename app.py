@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import json
 import pandas as pd
+import os
 
 # -----------------------------------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
@@ -33,6 +34,17 @@ if 'df_equipe' not in st.session_state:
         {"Trabalhador": "Ezequiel", "Diária (R$)": 120.0, "Alocado": False}
     ])
 
+# NOVO: Inicialização do Banco de Dados de Orçamentos Local
+if 'orcamentos_db' not in st.session_state:
+    if os.path.exists('orcamentos_salvos.json'):
+        try:
+            with open('orcamentos_salvos.json', 'r', encoding='utf-8') as f:
+                st.session_state['orcamentos_db'] = json.load(f)
+        except:
+            st.session_state['orcamentos_db'] = {}
+    else:
+        st.session_state['orcamentos_db'] = {}
+
 # -----------------------------------------------------------------------------
 # CONFIGURAÇÃO DA CHAVE DA API GEMINI
 # -----------------------------------------------------------------------------
@@ -42,8 +54,45 @@ else:
     genai.configure(api_key="SUA_CHAVE_DE_TESTE_AQUI")
 
 # -----------------------------------------------------------------------------
-# INTERFACE DA EQUIPE (MOVIDA PARA CIMA PARA CORREÇÃO DE BUG DE SINCRONIZAÇÃO)
+# INTERFACE DE HISTÓRICO E EQUIPE (BARRA LATERAL)
 # -----------------------------------------------------------------------------
+# NOVO: Menu para recuperar e editar orçamentos antigos
+st.sidebar.subheader("📂 Histórico de Orçamentos")
+opcoes_orcamentos = ["-- Criar Novo / Selecionar --"] + list(st.session_state['orcamentos_db'].keys())
+orcamento_escolhido = st.sidebar.selectbox("Carregar projeto salvo para edição:", opcoes_orcamentos)
+
+if orcamento_escolhido != "-- Criar Novo / Selecionar --":
+    if st.sidebar.button("🔄 Carregar Dados para Edição"):
+        dados = st.session_state['orcamentos_db'][orcamento_escolhido]
+        
+        # Repopula todas as variáveis de controle
+        st.session_state['nome_empresa'] = dados.get("nome_empresa", "JPL Trailers")
+        st.session_state['cnpj_cpf'] = dados.get("cnpj_cpf", "00.000.000/0001-00")
+        st.session_state['responsavel'] = dados.get("responsavel", "Jonatã Carvalho")
+        st.session_state['telefone'] = dados.get("telefone", "(71) 99999-9999")
+        st.session_state['endereco'] = dados.get("endereco", "Salvador, Bahia")
+        st.session_state['rede_social'] = dados.get("rede_social", "https://www.tiktok.com/")
+        st.session_state['cliente_nome'] = dados.get("cliente_nome", "Nome do Cliente Exemplo")
+        st.session_state['cliente_cpf'] = dados.get("cliente_cpf", "000.000.000-00")
+        st.session_state['cliente_tel'] = dados.get("cliente_tel", "(71) 98888-8888")
+        st.session_state['cliente_end'] = dados.get("cliente_end", "Salvador, Bahia")
+        st.session_state['meio_pagamento'] = dados.get("meio_pagamento", "50% de entrada + 50% na entrega")
+        st.session_state['observacoes_adicionais'] = dados.get("observacoes_adicionais", "")
+        st.session_state['margem_lucro'] = dados.get("margem_lucro", 40)
+        st.session_state['custo_almoco'] = dados.get("custo_almoco", 0.0)
+        st.session_state['custo_equipamentos'] = dados.get("custo_equipamentos", 0.0)
+        st.session_state['custo_deslocamento'] = dados.get("custo_deslocamento", 0.0)
+        st.session_state['custo_outros'] = dados.get("custo_outros", 0.0)
+        st.session_state['prazo_entrega'] = dados.get("prazo_entrega", 5)
+        st.session_state['texto_cliente'] = dados.get("texto_cliente", "")
+        
+        st.session_state['dados_ia'] = dados.get("dados_ia", {"escopo_tecnico": "", "materiais": []})
+        st.session_state['df_equipe'] = pd.DataFrame(dados.get("df_equipe", []))
+        st.session_state['valor_diaria_total'] = dados.get("valor_diaria_total", 0.0)
+        st.session_state['hash_diaria'] = dados.get("valor_diaria_total", 0.0)
+        st.rerun()
+
+st.sidebar.markdown("---")
 st.sidebar.subheader("👷 Equipe e Mão de Obra")
 df_equipe_atualizado = st.sidebar.data_editor(
     st.session_state['df_equipe'],
@@ -60,42 +109,50 @@ df_alocados = df_equipe_atualizado[df_equipe_atualizado["Alocado"] == True]
 custo_diario_equipe_calculado = float((df_alocados["Diária (R$)"]).sum())
 qtd_profissionais_alocados = len(df_alocados)
 
+# Sincronização inteligente de valores de diária da equipe ativa
+if 'hash_diaria' not in st.session_state:
+    st.session_state['hash_diaria'] = custo_diario_equipe_calculado
+    st.session_state['valor_diaria_total'] = custo_diario_equipe_calculado
+
+if st.session_state['hash_diaria'] != custo_diario_equipe_calculado:
+    st.session_state['valor_diaria_total'] = custo_diario_equipe_calculado
+    st.session_state['hash_diaria'] = custo_diario_equipe_calculado
+
 # -----------------------------------------------------------------------------
 # ---- PAINEL DE CONFIGURAÇÕES NA VISUALIZAÇÃO PRINCIPAL ----
 with st.expander("⚙️ Painel de Controle e Parâmetros do Orçamento", expanded=True):
     
     st.header("🏢 Dados da Empresa (Cabeçalho)")
-    nome_empresa = st.text_input("Nome da Empresa", "JPL Trailers")
-    cnpj_cpf = st.text_input("CNPJ / CPF", "00.000.000/0001-00")
-    responsavel = st.text_input("Nome do Responsável", "Jonatã Carvalho")
-    telefone = st.text_input("Telefone / WhatsApp", "(71) 99999-9999")
-    endereco = st.text_input("Endereço", "Salvador, Bahia")
-    rede_social = st.text_input("Rede Social", "https://www.tiktok.com/")
+    nome_empresa = st.text_input("Nome da Empresa", "JPL Trailers", key="nome_empresa")
+    cnpj_cpf = st.text_input("CNPJ / CPF", "00.000.000/0001-00", key="cnpj_cpf")
+    responsavel = st.text_input("Nome do Responsável", "Jonatã Carvalho", key="responsavel")
+    telefone = st.text_input("Telefone / WhatsApp", "(71) 99999-9999", key="telefone")
+    endereco = st.text_input("Endereço", "Salvador, Bahia", key="endereco")
+    rede_social = st.text_input("Rede Social", "https://www.tiktok.com/", key="rede_social")
 
     st.markdown("---")
     st.header("👤 Dados do Cliente")
-    cliente_nome = st.text_input("Nome do Cliente", "Nome do Cliente Exemplo")
-    cliente_cpf = st.text_input("CPF / CNPJ do Cliente", "000.000.000-00")
-    cliente_tel = st.text_input("WhatsApp do Cliente", "(71) 98888-8888")
-    cliente_end = st.text_input("Endereço do Cliente", "Salvador, Bahia")
+    cliente_nome = st.text_input("Nome do Cliente", "Nome do Cliente Exemplo", key="cliente_nome")
+    cliente_cpf = st.text_input("CPF / CNPJ do Cliente", "000.000.000-00", key="cliente_cpf")
+    cliente_tel = st.text_input("WhatsApp do Cliente", "(71) 98888-8888", key="cliente_tel")
+    cliente_end = st.text_input("Endereço do Cliente", "Salvador, Bahia", key="cliente_end")
 
     st.markdown("---")
     st.header("📝 Termos, Condições e Observações")
-    meio_pagamento = st.text_input("Meio de Pagamento", "50% de entrada + 50% na entrega")
-    observacoes_adicionais = st.text_area("Observações / Garantia do Orçamento", "Garantia de 1 ano na estrutura metálica contra defeitos de fabricação.")
+    meio_pagamento = st.text_input("Meio de Pagamento", "50% de entrada + 50% na entrega", key="meio_pagamento")
+    observacoes_adicionais = st.text_area("Observações / Garantia do Orçamento", "Garantia de 1 ano na estrutura metálica contra defeitos de fabricação.", key="observacoes_adicionais")
 
     st.markdown("---")
     st.header("💰 Parâmetros Financeiros")
-    # Sincronizado automaticamente com a tabela lateral de profissionais ativos!
-    valor_diaria_total = st.number_input("Custo Total da Diária (R$)", value=custo_diario_equipe_calculado, step=10.0)
-    margem_lucro = st.slider("Margem de Lucro (%)", min_value=10, max_value=100, value=40, step=5)
+    valor_diaria_total = st.number_input("Custo Total da Diária (R$)", step=10.0, key="valor_diaria_total")
+    margem_lucro = st.slider("Margem de Lucro (%)", min_value=10, max_value=100, value=40, step=5, key="margem_lucro")
 
     st.markdown("---")
     st.subheader("🚀 Custos Adicionais Extra-Oficina")
-    custo_almoco = st.number_input("Custo com Almoço / Alimentação (R$)", value=0.0, step=10.0)
-    custo_equipamentos = st.number_input("Custo com Equipamentos / Locação externa (R$)", value=0.0, step=10.0)
-    custo_deslocamento = st.number_input("Custo com Deslocamento / Frete (R$)", value=0.0, step=10.0)
-    custo_outros = st.number_input("Outros Custos Adicionais (R$)", value=0.0, step=10.0)
+    custo_almoco = st.number_input("Custo com Almoço / Alimentação (R$)", value=0.0, step=10.0, key="custo_almoco")
+    custo_equipamentos = st.number_input("Custo com Equipamentos / Locação externa (R$)", value=0.0, step=10.0, key="custo_equipamentos")
+    custo_deslocamento = st.number_input("Custo com Deslocamento / Frete (R$)", value=0.0, step=10.0, key="custo_deslocamento")
+    custo_outros = st.number_input("Outros Custos Adicionais (R$)", value=0.0, step=10.0, key="custo_outros")
 
 # -----------------------------------------------------------------------------
 # CONTEÚDO PRINCIPAL
@@ -106,7 +163,7 @@ st.write("Insira a conversa do WhatsApp abaixo para extrair materiais e formatar
 st.markdown("---")
 
 st.subheader("Etapa 1: Resumo do Pedido (Conversa do WhatsApp)")
-texto_cliente = st.text_area("Cole aqui a mensagem do cliente para a IA interpretar:", height=120)
+texto_cliente = st.text_area("Cole aqui a mensagem do cliente para a IA interpretar:", height=120, key="texto_cliente")
 
 if st.button("🚀 Processar Texto com Inteligência Artificial"):
     if texto_cliente:
@@ -153,7 +210,7 @@ if st.button("🚀 Processar Texto com Inteligência Artificial"):
 st.markdown("---")
 
 st.subheader("Etapa 2: Conferência e Ajustes")
-prazo_entrega = st.number_input("Prazo de Entrega Estimado (Dias)", min_value=1, value=5, step=1)
+prazo_entrega = st.number_input("Prazo de Entrega Estimado (Dias)", min_value=1, value=5, step=1, key="prazo_entrega")
 
 escopo_corrigido = st.text_area(
     "📝 Descrição do Escopo Técnico (Editável):", 
@@ -240,7 +297,7 @@ orcamento_html = f"""
         <h4 style="margin-bottom: 5px; color: #111;">2. Cronograma e Recursos Estimados:</h4>
         <ul style="font-size: 14px; margin: 0; padding-left: 20px; color: #333;">
             <li>Período de execução estimado: <strong>{prazo_entrega} dias úteis</strong>.</li>
-            <li>Dimensionamento da equipe técnica alocada: <strong>{qtd_profissionais_alocados} profissional(is)</strong>.</li>
+            <li>Dimensionamento da equipe técnica alocada: <strong>{qtd_profissionais_alocados} professional(is)</strong>.</li>
             {f'<li>Custos adicionais operacionais incluídos no escopo:<ul>{html_extras}</ul></li>' if html_extras else ''}
         </ul>
     </div>
@@ -291,7 +348,7 @@ st.markdown("\n".join([linha.strip() for linha in orcamento_html.split("\n")]), 
 
 st.markdown("---")
 
-# 📥 NOVO: SISTEMA NATIVO DE IMPRESSÃO / SALVAMENTO EM PDF
+# 📥 EXPORTAR DOCUMENTO 
 st.subheader("📥 Exportar Documento")
 
 html_completo_para_impressao = f"""
@@ -303,7 +360,14 @@ html_completo_para_impressao = f"""
     <style>
         @media print {{
             .btn-imprimir {{ display: none !important; }}
-            body {{ background-color: white; }}
+            @page {{
+                size: auto;
+                margin: 0;
+            }}
+            body {{ 
+                background-color: white !important; 
+                padding: 20mm 15mm !important; 
+            }}
         }}
     </style>
 </head>
@@ -348,3 +412,53 @@ with col5:
     st.metric("Custo Bruto Total do Projeto", f"R$ {custo_geral_projeto:,.2f}")
 with col6:
     st.metric("Lucro Estimado para Oficina", f"R$ {lucro_estimado:,.2f}")
+
+# -----------------------------------------------------------------------------
+# NOVO: BANCO DE DADOS LOCAL - SALVAMENTO DO PROJETO ATUAL
+# -----------------------------------------------------------------------------
+st.markdown("---")
+st.subheader("💾 Histórico da Oficina: Gravar Orçamento")
+nome_projeto_salvar = st.text_input("Defina uma identificação para salvar este orçamento (Ex: Cliente - Tipo do Serviço):", value=f"{cliente_nome} - {prazo_entrega} dias")
+
+if st.button("💾 Salvar / Atualizar no Histórico"):
+    # Limpa a coluna temporária "Total_Item" para salvar o JSON de materiais limpo
+    if 'Total_Item' in df_materiais_ajustado.columns:
+        df_salvar_m = df_materiais_ajustado.drop(columns=['Total_Item'])
+    else:
+        df_salvar_m = df_materiais_ajustado
+
+    dados_ia_atualizados = {
+        "escopo_tecnico": escopo_corrigido,
+        "materiais": df_salvar_m.to_dict(orient='records')
+    }
+
+    st.session_state['orcamentos_db'][nome_projeto_salvar] = {
+        "nome_empresa": nome_empresa,
+        "cnpj_cpf": cnpj_cpf,
+        "responsavel": responsavel,
+        "telefone": telefone,
+        "endereco": endereco,
+        "rede_social": rede_social,
+        "cliente_nome": cliente_nome,
+        "cliente_cpf": cliente_cpf,
+        "cliente_tel": cliente_tel,
+        "cliente_end": cliente_end,
+        "meio_pagamento": meio_pagamento,
+        "observacoes_adicionais": observacoes_adicionais,
+        "valor_diaria_total": valor_diaria_total,
+        "margem_lucro": margem_lucro,
+        "custo_almoco": custo_almoco,
+        "custo_equipamentos": custo_equipamentos,
+        "custo_deslocamento": custo_deslocamento,
+        "custo_outros": custo_outros,
+        "prazo_entrega": prazo_entrega,
+        "texto_cliente": texto_cliente,
+        "dados_ia": dados_ia_atualizados,
+        "df_equipe": df_equipe_atualizado.to_dict(orient='records')
+    }
+
+    with open('orcamentos_salvos.json', 'w', encoding='utf-8') as f:
+        json.dump(st.session_state['orcamentos_db'], f, ensure_ascii=False, indent=4)
+        
+    st.success(f"Sucesso! O orçamento '{nome_projeto_salvar}' foi arquivado. Você já pode recarregá-lo pela barra lateral quando quiser.")
+    st.rerun()
