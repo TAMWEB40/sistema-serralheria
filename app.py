@@ -19,7 +19,7 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 st.warning("Conexão com Google Sheets desativada temporariamente.")
 conn = None
-    st.warning("Conexão com Google Sheets desativada temporariamente.")
+st.warning("Conexão com Google Sheets desativada temporariamente.")
 conn = None
 
 # -----------------------------------------------------------------------------
