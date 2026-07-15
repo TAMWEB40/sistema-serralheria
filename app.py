@@ -14,6 +14,13 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------------------------
+# CAMINHO ABSOLUTO SEGURO PARA O BANCO DE DADOS LOCAL
+# -----------------------------------------------------------------------------
+# Garante que o banco de dados seja salvo SEMPRE na mesma pasta do script principal
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in locals() else os.getcwd()
+DB_PATH = os.path.join(BASE_DIR, 'orcamentos_salvos.json')
+
+# -----------------------------------------------------------------------------
 # INICIALIZAÇÃO DO ESTADO DA SESSÃO (SESSION STATE)
 # -----------------------------------------------------------------------------
 if 'dados_ia' not in st.session_state:
@@ -34,13 +41,14 @@ if 'df_equipe' not in st.session_state:
         {"Trabalhador": "Ezequiel", "Diária (R$)": 120.0, "Alocado": False}
     ])
 
-# NOVO: Inicialização do Banco de Dados de Orçamentos Local
+# Inicialização robusta carregando do caminho absoluto
 if 'orcamentos_db' not in st.session_state:
-    if os.path.exists('orcamentos_salvos.json'):
+    if os.path.exists(DB_PATH):
         try:
-            with open('orcamentos_salvos.json', 'r', encoding='utf-8') as f:
+            with open(DB_PATH, 'r', encoding='utf-8') as f:
                 st.session_state['orcamentos_db'] = json.load(f)
-        except:
+        except Exception as e:
+            st.sidebar.error(f"Erro ao ler histórico existente: {e}")
             st.session_state['orcamentos_db'] = {}
     else:
         st.session_state['orcamentos_db'] = {}
@@ -56,7 +64,6 @@ else:
 # -----------------------------------------------------------------------------
 # INTERFACE DE HISTÓRICO E EQUIPE (BARRA LATERAL)
 # -----------------------------------------------------------------------------
-# NOVO: Menu para recuperar e editar orçamentos antigos
 st.sidebar.subheader("📂 Histórico de Orçamentos")
 opcoes_orcamentos = ["-- Criar Novo / Selecionar --"] + list(st.session_state['orcamentos_db'].keys())
 orcamento_escolhido = st.sidebar.selectbox("Carregar projeto salvo para edição:", opcoes_orcamentos)
@@ -104,6 +111,7 @@ df_equipe_atualizado = st.sidebar.data_editor(
     num_rows="dynamic",
     key="editor_equipe_v2"
 )
+
 # Cálculo imediato em tempo de execução para alimentar os Parâmetros Financeiros
 df_alocados = df_equipe_atualizado[df_equipe_atualizado["Alocado"] == True]
 custo_diario_equipe_calculado = float((df_alocados["Diária (R$)"]).sum())
@@ -251,7 +259,6 @@ st.markdown("---")
 # ETAPA 3: Exibição do Orçamento Final Formatado
 st.subheader("Etapa 3: Orçamento Final")
 
-# Criação de linhas de custos adicionais para o documento se houver valores digitados
 html_extras = ""
 if custo_almoco > 0: html_extras += f"<li>Alimentação / Almoço: <strong>R$ {custo_almoco:,.2f}</strong></li>"
 if custo_equipamentos > 0: html_extras += f"<li>Locação de Equipamentos especiais: <strong>R$ {custo_equipamentos:,.2f}</strong></li>"
@@ -399,7 +406,7 @@ st.subheader("📊 Resumo Geral e Análise de Custos Internos")
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Custo Materiais", f"R$ {custo_total_materiais:,.2f}")
+    st.metric("Custo Materiais", f"R$ {custo_total_materials:,.2f}")
 with col2:
     st.metric("Custo Mão de Obra", f"R$ {custo_total_mao_obra:,.2f}")
 with col3:
@@ -414,7 +421,7 @@ with col6:
     st.metric("Lucro Estimado para Oficina", f"R$ {lucro_estimado:,.2f}")
 
 # -----------------------------------------------------------------------------
-# NOVO: BANCO DE DADOS LOCAL - SALVAMENTO DO PROJETO ATUAL
+# BANCO DE DADOS LOCAL - SALVAMENTO COM CONVERSÃO DE DADOS SEGURA
 # -----------------------------------------------------------------------------
 st.markdown("---")
 st.subheader("💾 Histórico da Oficina: Gravar Orçamento")
@@ -427,11 +434,30 @@ if st.button("💾 Salvar / Atualizar no Histórico"):
     else:
         df_salvar_m = df_materiais_ajustado
 
+    # FORÇA a conversão segura de tipos de dados de DataFrames do Pandas para tipos puros do Python
+    materiais_dict = []
+    for m in df_salvar_m.to_dict(orient='records'):
+        materiais_dict.append({
+            "Item": str(m.get("Item", "")),
+            "Quantidade": float(m.get("Quantidade", 0.0)),
+            "Unidade": str(m.get("Unidade", "")),
+            "Preco_Unitario": float(m.get("Preco_Unitario", 0.0))
+        })
+
+    equipe_dict = []
+    for eq in df_equipe_atualizado.to_dict(orient='records'):
+        equipe_dict.append({
+            "Trabalhador": str(eq.get("Trabalhador", "")),
+            "Diária (R$)": float(eq.get("Diária (R$)", 0.0)),
+            "Alocado": bool(eq.get("Alocado", False))
+        })
+
     dados_ia_atualizados = {
         "escopo_tecnico": escopo_corrigido,
-        "materiais": df_salvar_m.to_dict(orient='records')
+        "materiais": materiais_dict
     }
 
+    # Estruturação final do documento
     st.session_state['orcamentos_db'][nome_projeto_salvar] = {
         "nome_empresa": nome_empresa,
         "cnpj_cpf": cnpj_cpf,
@@ -445,20 +471,23 @@ if st.button("💾 Salvar / Atualizar no Histórico"):
         "cliente_end": cliente_end,
         "meio_pagamento": meio_pagamento,
         "observacoes_adicionais": observacoes_adicionais,
-        "valor_diaria_total": valor_diaria_total,
-        "margem_lucro": margem_lucro,
-        "custo_almoco": custo_almoco,
-        "custo_equipamentos": custo_equipamentos,
-        "custo_deslocamento": custo_deslocamento,
-        "custo_outros": custo_outros,
-        "prazo_entrega": prazo_entrega,
+        "valor_diaria_total": float(valor_diaria_total),
+        "margem_lucro": int(margem_lucro),
+        "custo_almoco": float(custo_almoco),
+        "custo_equipamentos": float(custo_equipamentos),
+        "custo_deslocamento": float(custo_deslocamento),
+        "custo_outros": float(custo_outros),
+        "prazo_entrega": int(prazo_entrega),
         "texto_cliente": texto_cliente,
         "dados_ia": dados_ia_atualizados,
-        "df_equipe": df_equipe_atualizado.to_dict(orient='records')
+        "df_equipe": equipe_dict
     }
 
-    with open('orcamentos_salvos.json', 'w', encoding='utf-8') as f:
-        json.dump(st.session_state['orcamentos_db'], f, ensure_ascii=False, indent=4)
-        
-    st.success(f"Sucesso! O orçamento '{nome_projeto_salvar}' foi arquivado. Você já pode recarregá-lo pela barra lateral quando quiser.")
-    st.rerun()
+    # Gravação física assistida por manipulação de erros
+    try:
+        with open(DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(st.session_state['orcamentos_db'], f, ensure_ascii=False, indent=4)
+        st.success(f"Sucesso! O orçamento '{nome_projeto_salvar}' foi arquivado localmente.")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Erro físico ao tentar gravar o arquivo de histórico: {e}")
