@@ -17,11 +17,10 @@ st.set_page_config(
 # -----------------------------------------------------------------------------
 # CONEXÃO COM O GOOGLE SHEETS
 # -----------------------------------------------------------------------------
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.sidebar.error(f"Erro ao inicializar conexão com Google Sheets: {e}")
-    conn = None
+st.warning("Conexão com Google Sheets desativada temporariamente.")
+conn = None
+    st.warning("Conexão com Google Sheets desativada temporariamente.")
+conn = None
 
 # -----------------------------------------------------------------------------
 # INICIALIZAÇÃO DO ESTADO DA SESSÃO (SESSION STATE)
