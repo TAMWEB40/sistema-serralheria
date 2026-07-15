@@ -117,6 +117,10 @@ df_equipe_atualizado = st.sidebar.data_editor(
     key="editor_equipe_v2"
 )
 
+# Tratamento seguro contra valores nulos na diária dos profissionais
+if not df_equipe_atualizado.empty:
+    df_equipe_atualizado["Diária (R$)"] = pd.to_numeric(df_equipe_atualizado["Diária (R$)"]).fillna(0.0)
+
 # Cálculo imediato do custo diário dos trabalhadores marcados como Alocado
 df_alocados = df_equipe_atualizado[df_equipe_atualizado["Alocado"] == True]
 custo_diario_equipe_calculado = float((df_alocados["Diária (R$)"]).sum())
@@ -171,7 +175,7 @@ with st.expander("⚙️ Painel de Controle e Parâmetros do Orçamento", expand
     margem_lucro = st.slider("Margem de Lucro (%)", min_value=10, max_value=100, value=int(st.session_state.get('margem_lucro', 40)), step=5, key="margem_lucro")
 
     st.markdown("---")
-    st.subheader("🚀 Custos Adicionais Extra-Oficina")
+    st.header("🚀 Custos Adicionais Extra-Oficina")
     custo_almoco = st.number_input("Custo com Almoço / Alimentação (R$)", value=float(st.session_state.get('custo_almoco', 0.0)), step=10.0, key="custo_almoco")
     custo_equipamentos = st.number_input("Custo com Equipamentos / Locação externa (R$)", value=float(st.session_state.get('custo_equipamentos', 0.0)), step=10.0, key="custo_equipamentos")
     custo_deslocamento = st.number_input("Custo com Deslocamento / Frete (R$)", value=float(st.session_state.get('custo_deslocamento', 0.0)), step=10.0, key="custo_deslocamento")
@@ -257,9 +261,13 @@ df_materiais_ajustado = st.data_editor(
 )
 
 # -----------------------------------------------------------------------------
-# CÁLCULOS ATUALIZADOS COM CUSTOS OPERACIONAIS ADICIONAIS
+# CÁLCULOS ATUALIZADOS COM CUSTOS OPERACIONAIS ADICIONAIS E TRATAMENTO SEGURO
 # -----------------------------------------------------------------------------
 if not df_materiais_ajustado.empty:
+    # Garante tipo numérico de forma robusta e preenche vazios com 0.0
+    df_materiais_ajustado["Quantidade"] = pd.to_numeric(df_materiais_ajustado["Quantidade"]).fillna(0.0)
+    df_materiais_ajustado["Preco_Unitario"] = pd.to_numeric(df_materiais_ajustado["Preco_Unitario"]).fillna(0.0)
+    
     df_materiais_ajustado["Total_Item"] = df_materiais_ajustado["Quantidade"] * df_materiais_ajustado["Preco_Unitario"]
     custo_total_materials = float(df_materiais_ajustado["Total_Item"].sum())
 else:
@@ -370,7 +378,7 @@ orcamento_html += f"""
 """
 
 # Renderiza o HTML estruturado
-st.markdown("\n".join([linha.strip() for linha in orcamento_html.split("\n")]), unsafe_allow_html=True)
+st.markdown("\n".join([linha.strip() for inline in orcamento_html.split("\n") for linha in inline.split("  ")]), unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -460,18 +468,18 @@ if st.button("💾 Salvar / Atualizar no Histórico"):
         materiais_dict = []
         for m in df_salvar_m.to_dict(orient='records'):
             materiais_dict.append({
-                "Item": str(m.get("Item", "")),
-                "Quantidade": float(m.get("Quantidade", 0.0)),
-                "Unidade": str(m.get("Unidade", "")),
-                "Preco_Unitario": float(m.get("Preco_Unitario", 0.0))
+                "Item": str(m.get("Item") or ""),
+                "Quantidade": float(m.get("Quantidade") or 0.0),
+                "Unidade": str(m.get("Unidade") or ""),
+                "Preco_Unitario": float(m.get("Preco_Unitario") or 0.0)
             })
 
         equipe_dict = []
         for eq in df_equipe_atualizado.to_dict(orient='records'):
             equipe_dict.append({
-                "Trabalhador": str(eq.get("Trabalhador", "")),
-                "Diária (R$)": float(eq.get("Diária (R$)", 0.0)),
-                "Alocado": bool(eq.get("Alocado", False))
+                "Trabalhador": str(eq.get("Trabalhador") or ""),
+                "Diária (R$)": float(eq.get("Diária (R$)") or 0.0),
+                "Alocado": bool(eq.get("Alocado") or False)
             })
 
         dados_ia_atualizados = {
