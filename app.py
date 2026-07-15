@@ -3,7 +3,7 @@ import google.generativeai as genai
 import json
 import pandas as pd
 import os
-from streamlit_gsheets import GSheetsConnection
+# from streamlit_gsheets import GSheetsConnection
 
 # -----------------------------------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
