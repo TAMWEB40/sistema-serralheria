@@ -1,3 +1,5 @@
-streamlit
 google-generativeai
-fpdf2
+streamlit
+pandas
+gspread
+google-auth
